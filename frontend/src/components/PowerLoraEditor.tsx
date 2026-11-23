@@ -53,8 +53,8 @@ function getEffectiveRange(
     base = { min: -2, max: 2 };
   }
   return {
-    min: Math.min(base.min, Math.floor(curVal)),
-    max: Math.max(base.max, Math.ceil(curVal)),
+    min: curVal < base.min ? Math.round(curVal * 100) / 100 : base.min,
+    max: curVal > base.max ? Math.round(curVal * 100) / 100 : base.max,
   };
 }
 
