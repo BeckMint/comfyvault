@@ -274,10 +274,6 @@ export const WorkflowCreateModal: React.FC<Props> = ({
   };
 
   const handleUploadImageForNode = async (nid: string, key: string, file: File) => {
-    if (!comfyStatus.online) {
-      onError(t("ComfyUI 离线，无法上传参考图", "ComfyUI is offline; cannot upload reference image"));
-      return;
-    }
     try {
       const localUrl = URL.createObjectURL(file);
       const res = await api.uploadComfyImage(file);
@@ -747,8 +743,13 @@ export const WorkflowCreateModal: React.FC<Props> = ({
 
                           const strVal = String(val);
 
-                          // 4. LoadImage with upload button & thumbnail preview
-                          if (isLoadImage && kl === "image") {
+                          // Hide dummy upload button placeholder widget_1="image" on offline LoadImage
+                          if (isLoadImage && kl === "widget_1" && strVal.toLowerCase() === "image") {
+                            return null;
+                          }
+
+                          // 4. LoadImage with upload button & thumbnail preview (works online 'image' & offline 'widget_0')
+                          if (isLoadImage && (kl === "image" || kl === "widget_0")) {
                             const previewSrc =
                               uploadedPreviews[`${node.nid}::${key}`] ||
                               (strVal ? `/api/comfy/input-image?name=${encodeURIComponent(strVal)}` : "");

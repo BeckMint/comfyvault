@@ -167,10 +167,6 @@ export const RemixModal: React.FC<Props> = ({ detail, comfyStatus, onClose, onSa
   };
 
   const handleUploadImage = async (nid: string, key: string, file: File) => {
-    if (!comfyStatus.online) {
-      onError(t("ComfyUI 离线，无法上传图片", "ComfyUI is offline; cannot upload image"));
-      return;
-    }
     try {
       const localUrl = URL.createObjectURL(file);
       const res = await api.uploadComfyImage(file);
@@ -548,8 +544,13 @@ export const RemixModal: React.FC<Props> = ({ detail, comfyStatus, onClose, onSa
 
                           const strVal = String(val);
 
-                          // 4. LoadImage upload with thumbnail preview
-                          if (isLoadImage && kl === "image") {
+                          // Hide dummy upload button placeholder widget_1="image" on offline LoadImage
+                          if (isLoadImage && kl === "widget_1" && strVal.toLowerCase() === "image") {
+                            return null;
+                          }
+
+                          // 4. LoadImage upload with thumbnail preview (works online 'image' & offline 'widget_0')
+                          if (isLoadImage && (kl === "image" || kl === "widget_0")) {
                             const previewSrc =
                               uploadedPreviews[`${node.nid}::${key}`] ||
                               (strVal ? `/api/comfy/input-image?name=${encodeURIComponent(strVal)}` : "");

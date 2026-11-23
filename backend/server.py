@@ -495,8 +495,24 @@ class VaultApp:
         try:
             res = await self.bridge.upload_image(filename, data, field.headers.get("Content-Type", "image/png"))
             return web.json_response(res)
-        except Exception as e:
-            return web.json_response({"error": str(e)}, status=400)
+        except Exception:
+            # Offline fallback: write directly to ComfyUI/input so users can upload & preview even when ComfyUI is stopped
+            try:
+                safe_name = Path(filename).name
+                safe_name = "".join(c for c in safe_name if c not in '/\\:*?"<>|').strip() or "upload.png"
+                input_dir = (COMFY_ROOT / "input").resolve()
+                input_dir.mkdir(parents=True, exist_ok=True)
+                target = input_dir / safe_name
+                if target.exists():
+                    stem, suf = target.stem, target.suffix
+                    idx = 1
+                    while (input_dir / f"{stem}_{idx}{suf}").exists():
+                        idx += 1
+                    target = input_dir / f"{stem}_{idx}{suf}"
+                await asyncio.to_thread(target.write_bytes, data)
+                return web.json_response({"name": target.name, "subfolder": "", "type": "input"})
+            except Exception as e2:
+                return web.json_response({"error": str(e2)}, status=400)
 
     async def handle_comfy_input_image(self, request: web.Request) -> web.StreamResponse:
         name = (request.query.get("name") or "").replace("\\", "/").strip("/")
