@@ -43,6 +43,13 @@ interface ViewState {
   targetScale: number;
   targetTx: number;
   targetTy: number;
+  // Smooth Picasa-style GPU rotation & flip animation state
+  curRotDeg: number;
+  targetRotDeg: number;
+  curFlipX: number;
+  targetFlipX: number;
+  curFlipY: number;
+  targetFlipY: number;
   // Anchor-locked log-space zoom physics (zero pixel drift during glide!)
   anchorActive: boolean;
   anchorDx: number;
@@ -67,18 +74,24 @@ uniform vec2 u_imgSize;
 uniform vec2 u_translate;
 uniform float u_scale;
 uniform float u_rot;
-uniform float u_flipH;
+uniform float u_flipX;
+uniform float u_flipY;
 out vec2 v_uv;
 void main() {
   vec2 p = a_pos * u_imgSize;
-  p.x *= u_flipH;
+  p.x *= u_flipX;
+  p.y *= u_flipY;
   float c = cos(u_rot);
   float s = sin(u_rot);
   vec2 rotated = vec2(p.x * c - p.y * s, p.x * s + p.y * c);
   vec2 scaled = rotated * u_scale;
   vec2 px = scaled + vec2(u_translate.x, -u_translate.y);
   vec2 clip = (px / (u_viewport * 0.5));
-  gl_Position = vec4(clip, 0.0, 1.0);
+  // Subtle Picasa-like 3D perspective depth during horizontal/vertical flip (zero distortion at rest)
+  float sinX = sqrt(max(0.0, 1.0 - u_flipX * u_flipX));
+  float sinY = sqrt(max(0.0, 1.0 - u_flipY * u_flipY));
+  float w = 1.0 + 0.14 * (a_pos.x * sinX + a_pos.y * sinY);
+  gl_Position = vec4(clip, 0.0, w);
   v_uv = a_uv;
 }`;
 
@@ -101,7 +114,8 @@ interface GLRenderer {
   uTranslate: WebGLUniformLocation | null;
   uScale: WebGLUniformLocation | null;
   uRot: WebGLUniformLocation | null;
-  uFlipH: WebGLUniformLocation | null;
+  uFlipX: WebGLUniformLocation | null;
+  uFlipY: WebGLUniformLocation | null;
 }
 
 function initWebGL2(canvas: HTMLCanvasElement): GLRenderer | null {
@@ -178,7 +192,8 @@ function initWebGL2(canvas: HTMLCanvasElement): GLRenderer | null {
     uTranslate: gl.getUniformLocation(program, "u_translate"),
     uScale: gl.getUniformLocation(program, "u_scale"),
     uRot: gl.getUniformLocation(program, "u_rot"),
-    uFlipH: gl.getUniformLocation(program, "u_flipH"),
+    uFlipX: gl.getUniformLocation(program, "u_flipX"),
+    uFlipY: gl.getUniformLocation(program, "u_flipY"),
   };
 }
 
@@ -211,6 +226,12 @@ export const LightboxModal: React.FC<Props> = ({ items, currentIndex, onChangeIn
     targetScale: 1,
     targetTx: 0,
     targetTy: 0,
+    curRotDeg: 0,
+    targetRotDeg: 0,
+    curFlipX: 1,
+    targetFlipX: 1,
+    curFlipY: 1,
+    targetFlipY: 1,
     anchorActive: false,
     anchorDx: 0,
     anchorDy: 0,
@@ -267,7 +288,6 @@ export const LightboxModal: React.FC<Props> = ({ items, currentIndex, onChangeIn
       canvas.height = targetH;
     }
 
-    const { rotCw, flipH } = transformRef.current;
     const r = glRef.current;
     if (r) {
       const { gl } = r;
@@ -282,8 +302,9 @@ export const LightboxModal: React.FC<Props> = ({ items, currentIndex, onChangeIn
       gl.uniform2f(r.uImgSize, st.natW, st.natH);
       gl.uniform2f(r.uTranslate, st.curTx, st.curTy);
       gl.uniform1f(r.uScale, st.curScale);
-      gl.uniform1f(r.uRot, (-rotCw * Math.PI) / 180);
-      gl.uniform1f(r.uFlipH, flipH ? -1.0 : 1.0);
+      gl.uniform1f(r.uRot, (-st.curRotDeg * Math.PI) / 180);
+      gl.uniform1f(r.uFlipX, st.curFlipX);
+      gl.uniform1f(r.uFlipY, st.curFlipY);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     } else if (fallbackImgRef.current) {
       const ctx = canvas.getContext("2d");
@@ -294,8 +315,8 @@ export const LightboxModal: React.FC<Props> = ({ items, currentIndex, onChangeIn
         ctx.imageSmoothingQuality = "high";
         ctx.save();
         ctx.translate(vw / 2 + st.curTx, vh / 2 + st.curTy);
-        ctx.rotate((rotCw * Math.PI) / 180);
-        ctx.scale(flipH ? -st.curScale : st.curScale, st.curScale);
+        ctx.rotate((st.curRotDeg * Math.PI) / 180);
+        ctx.scale(st.curScale * st.curFlipX, st.curScale * st.curFlipY);
         ctx.drawImage(fallbackImgRef.current, -st.natW / 2, -st.natH / 2, st.natW, st.natH);
         ctx.restore();
       }
@@ -326,20 +347,34 @@ export const LightboxModal: React.FC<Props> = ({ items, currentIndex, onChangeIn
 
       // Silky Picasa logarithmic exponential damping
       const alpha = 1 - Math.exp(-11.5 * dt);
+      const tAlpha = 1 - Math.exp(-13.5 * dt);
 
       const curLog = Math.log(Math.max(0.01, st.curScale));
       const targetLog = Math.log(Math.max(0.01, st.targetScale));
       const dLog = targetLog - curLog;
       const dTx = st.targetTx - st.curTx;
       const dTy = st.targetTy - st.curTy;
+      const dRot = st.targetRotDeg - st.curRotDeg;
+      const dFx = st.targetFlipX - st.curFlipX;
+      const dFy = st.targetFlipY - st.curFlipY;
 
       const settled =
-        Math.abs(dLog) < 0.0004 && Math.abs(dTx) < 0.12 && Math.abs(dTy) < 0.12;
+        Math.abs(dLog) < 0.0004 &&
+        Math.abs(dTx) < 0.12 &&
+        Math.abs(dTy) < 0.12 &&
+        Math.abs(dRot) < 0.08 &&
+        Math.abs(dFx) < 0.002 &&
+        Math.abs(dFy) < 0.002;
 
       if (settled || st.dragging) {
         st.curScale = st.targetScale;
         st.curTx = st.targetTx;
         st.curTy = st.targetTy;
+        if (!st.dragging) {
+          st.curRotDeg = st.targetRotDeg;
+          st.curFlipX = st.targetFlipX;
+          st.curFlipY = st.targetFlipY;
+        }
         st.anchorActive = false;
         drawFrame();
         rafIdRef.current = null;
@@ -348,6 +383,9 @@ export const LightboxModal: React.FC<Props> = ({ items, currentIndex, onChangeIn
 
       const nextScale = Math.exp(curLog + dLog * alpha);
       st.curScale = nextScale;
+      st.curRotDeg += dRot * tAlpha;
+      st.curFlipX += dFx * tAlpha;
+      st.curFlipY += dFy * tAlpha;
 
       if (st.anchorActive) {
         // Keep exact cursor pixel locked throughout the entire glide!
@@ -461,38 +499,46 @@ export const LightboxModal: React.FC<Props> = ({ items, currentIndex, onChangeIn
     (op: "rot_ccw" | "rot_cw" | "flip_h" | "flip_v") => {
       if (!item || item.media_type !== "image" || !stRef.current.ready) return;
       const cur = transformRef.current;
+      const st = stRef.current;
+
+      // 1. Update canonical D4 state for exact lossless backend save
       let nextRot = cur.rotCw;
       let nextFlip = cur.flipH;
       if (op === "rot_cw") {
         nextRot = (cur.rotCw + 90) % 360;
+        st.targetRotDeg += 90;
       } else if (op === "rot_ccw") {
         nextRot = (cur.rotCw + 270) % 360;
+        st.targetRotDeg -= 90;
       } else if (op === "flip_h") {
         nextRot = (360 - cur.rotCw) % 360;
         nextFlip = !cur.flipH;
+        const rotMod = ((Math.round(st.targetRotDeg) % 180) + 180) % 180;
+        if (rotMod === 90) st.targetFlipY = -st.targetFlipY;
+        else st.targetFlipX = -st.targetFlipX;
       } else if (op === "flip_v") {
         nextRot = (180 - cur.rotCw + 360) % 360;
         nextFlip = !cur.flipH;
+        const rotMod = ((Math.round(st.targetRotDeg) % 180) + 180) % 180;
+        if (rotMod === 90) st.targetFlipX = -st.targetFlipX;
+        else st.targetFlipY = -st.targetFlipY;
       }
       transformRef.current = { assetId: item.id, rotCw: nextRot, flipH: nextFlip };
       setTransformState({ rotCw: nextRot, flipH: nextFlip });
 
-      const st = stRef.current;
+      // 2. Smoothly glide scale & pan to fit the newly oriented dimensions (Picasa style!)
       const { effW, effH } = getEffectiveSize(st.natW, st.natH);
       const nextFit = computeFitScale(effW, effH);
       st.fitScale = nextFit;
-      st.curScale = nextFit;
       st.targetScale = nextFit;
-      st.curTx = 0;
-      st.curTy = 0;
       st.targetTx = 0;
       st.targetTy = 0;
       st.anchorActive = false;
       if (dimTextRef.current) dimTextRef.current.textContent = `${effW} × ${effH}`;
       syncZoomedFlag();
-      drawFrame();
+      ensureLoop();
     },
-    [item, drawFrame, syncZoomedFlag]
+    [item, ensureLoop, syncZoomedFlag]
   );
 
   // Upload image ONCE to GPU texture with hardware trilinear mipmaps
@@ -501,6 +547,12 @@ export const LightboxModal: React.FC<Props> = ({ items, currentIndex, onChangeIn
     let cancelled = false;
     setLoadingImg(true);
     stRef.current.ready = false;
+    stRef.current.curRotDeg = 0;
+    stRef.current.targetRotDeg = 0;
+    stRef.current.curFlipX = 1;
+    stRef.current.targetFlipX = 1;
+    stRef.current.curFlipY = 1;
+    stRef.current.targetFlipY = 1;
     transformRef.current = { assetId: item.id, rotCw: 0, flipH: false };
     setTransformState({ rotCw: 0, flipH: false });
 
