@@ -659,7 +659,7 @@ def parse_comfy_metadata(
 
 
 MODEL_FAMILY_RULES: List[Tuple[str, str]] = [
-    (r"krea\s*2|kera\s*2|krealism", "Krea2"),
+    (r"krea\s*2|kera\s*2|krealism|realismbystableyogi|fineporn", "Krea2"),
     (r"qwen[\s_-]*image[\s_-]*2\.1", "Qwen-Image 2.1"),
     (r"qwen[\s_-]*image[\s_-]*2\.0|qwen[\s_-]*image[\s_-]*2\b", "Qwen-Image 2.0"),
     (r"qwen[\s_-]*image", "Qwen-Image"),
@@ -694,15 +694,17 @@ _PREPROCESSOR_RE = re.compile(r"depth_anything|dwpose|yolox|openpose|mediapipe|s
 
 
 def classify_model_family(base_model: Optional[str]) -> Optional[str]:
-    """Map a concrete checkpoint/UNET variant filename to its underlying foundation model family."""
+    """Map a concrete checkpoint/UNET variant filename (or subfolder path) to its underlying foundation model family."""
     if not base_model:
         return None
-    name = base_model.replace("\\", "/").split("/")[-1].strip()
+    full_norm = base_model.replace("\\", "/").strip()
+    name = full_norm.split("/")[-1].strip()
     if not name or _PREPROCESSOR_RE.search(name):
         return None
-    low = name.lower()
+    low_name = name.lower()
+    low_full = full_norm.lower()
     for pattern, label in MODEL_FAMILY_RULES:
-        if re.search(pattern, low):
+        if re.search(pattern, low_name) or re.search(pattern, low_full):
             return label
     # Fallback: strip extension and common quantization/turbo/variant suffixes
     stem = re.sub(r"\.(safetensors|ckpt|gguf|pt|pth|bin)$", "", name, flags=re.IGNORECASE)

@@ -3,7 +3,7 @@ import subprocess
 from pathlib import Path
 
 # Application version (increment patch +0.0.1 per iteration)
-VAULT_VERSION = "0.1.3"
+VAULT_VERSION = "0.1.4"
 
 # Base paths
 VAULT_ROOT = Path(__file__).resolve().parent.parent

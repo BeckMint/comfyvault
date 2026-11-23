@@ -186,17 +186,18 @@ class VaultDB:
 
     def _backfill_model_families(self, conn: sqlite3.Connection) -> None:
         rows = conn.execute(
-            "SELECT id, base_model FROM assets WHERE base_model IS NOT NULL AND base_model != '' AND (model_family IS NULL OR model_family = '')"
+            "SELECT id, base_model, model_family FROM assets WHERE base_model IS NOT NULL AND base_model != ''"
         ).fetchall()
         if not rows:
             return
         updates = []
         for r in rows:
             fam = classify_model_family(r["base_model"])
-            if fam:
+            if fam != r["model_family"]:
                 updates.append((fam, r["id"]))
         if updates:
             conn.executemany("UPDATE assets SET model_family = ? WHERE id = ?", updates)
+            conn.commit()
             conn.commit()
 
     def _sync_fts(self, conn: sqlite3.Connection, asset_id: int) -> None:
