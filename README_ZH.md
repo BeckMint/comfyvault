@@ -8,6 +8,10 @@
 
 [English](README.md) · [简体中文](README_ZH.md)
 
+<br/>
+
+![ComfyVault 界面截图](docs/screenshot.jpg)
+
 </div>
 
 ---
