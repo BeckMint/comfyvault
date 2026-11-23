@@ -15,7 +15,7 @@ import { SnippetsView } from "./components/SnippetsView";
 import { TopBar, type ActiveTab } from "./components/TopBar";
 import { VirtualMasonry } from "./components/VirtualMasonry";
 import { WorkflowCreateModal } from "./components/WorkflowCreateModal";
-import type { WorkflowPrefillPayload } from "./components/PromptConverterModal";
+import { PromptConverterModal, type WorkflowPrefillPayload } from "./components/PromptConverterModal";
 import type {
   AssetDetail,
   AssetFilter,
@@ -66,6 +66,7 @@ export default function App() {
   const [compareIds, setCompareIds] = useState<[number, number] | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [showWorkflowCreate, setShowWorkflowCreate] = useState(false);
+  const [showPromptConverter, setShowPromptConverter] = useState(false);
   const [workflowPrefill, setWorkflowPrefill] = useState<WorkflowPrefillPayload | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [detailRefreshTick, setDetailRefreshTick] = useState(0);
@@ -361,6 +362,7 @@ export default function App() {
         scanStatus={scanStatus}
         thumbStatus={thumbStatus}
         onTriggerScan={handleTriggerScan}
+        onOpenPromptConverter={() => setShowPromptConverter(true)}
         onOpenWorkflowCreate={() => setShowWorkflowCreate(true)}
         onOpenSettings={() => setShowSettings(true)}
         onControlComfy={async (action) => {
@@ -658,6 +660,18 @@ export default function App() {
           }}
           onSubmitted={(m) => showToast(m, "ok")}
           onError={(m) => showToast(m, "err")}
+        />
+      )}
+
+      {showPromptConverter && (
+        <PromptConverterModal
+          onClose={() => setShowPromptConverter(false)}
+          onToast={showToast}
+          onApplyToWorkflow={(prefill) => {
+            setShowPromptConverter(false);
+            setWorkflowPrefill(prefill);
+            setShowWorkflowCreate(true);
+          }}
         />
       )}
 

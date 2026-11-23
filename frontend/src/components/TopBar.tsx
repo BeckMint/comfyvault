@@ -15,6 +15,7 @@ import {
   RotateCw,
   Search,
   Settings,
+  Wand2,
   Workflow,
   X,
 } from "lucide-react";
@@ -37,6 +38,7 @@ interface Props {
   scanStatus: ScanStatus;
   thumbStatus: ThumbStatus;
   onTriggerScan: () => void;
+  onOpenPromptConverter: () => void;
   onOpenWorkflowCreate: () => void;
   onOpenSettings: () => void;
   onControlComfy: (action: "start" | "stop" | "restart") => void;
@@ -56,6 +58,7 @@ export const TopBar: React.FC<Props> = ({
   scanStatus,
   thumbStatus,
   onTriggerScan,
+  onOpenPromptConverter,
   onOpenWorkflowCreate,
   onOpenSettings,
   onControlComfy,
@@ -419,7 +422,21 @@ export const TopBar: React.FC<Props> = ({
           <Settings className="w-4 h-4" />
         </button>
 
-        {/* 5. Create from Workflow */}
+        {/* 5. AI Prompt Converter */}
+        <button
+          type="button"
+          onClick={onOpenPromptConverter}
+          className="h-8 px-2.5 rounded-lg bg-amber-600/20 hover:bg-amber-600/35 border border-amber-500/45 text-xs font-semibold text-amber-200 flex items-center gap-1.5 transition-colors whitespace-nowrap"
+          title={t(
+            "使用 Gemini / ChatGPT 网页版将任意提示词或一句话转换为适配工作流的结构化提示词",
+            "Convert any prompt or idea into structured workflow prompts via Gemini / ChatGPT web"
+          )}
+        >
+          <Wand2 className="w-3.5 h-3.5 text-amber-400" />
+          {t("转换", "Convert")}
+        </button>
+
+        {/* 6. Create from Workflow (Rightmost) */}
         <button
           type="button"
           onClick={onOpenWorkflowCreate}
@@ -430,7 +447,7 @@ export const TopBar: React.FC<Props> = ({
           )}
         >
           <Workflow className="w-3.5 h-3.5" />
-          {t("从工作流创建", "New from Workflow")}
+          {t("创建", "Create")}
         </button>
       </div>
     </header>
