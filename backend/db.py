@@ -171,12 +171,16 @@ class VaultDB:
                 """
             )
             conn.commit()
-            # Schema migration: add model_family column if missing
+            # Schema migration: add model_family / is_hidden columns if missing
             cols = {r[1] for r in conn.execute("PRAGMA table_info(assets)").fetchall()}
             if "model_family" not in cols:
                 conn.execute("ALTER TABLE assets ADD COLUMN model_family TEXT")
                 conn.commit()
+            if "is_hidden" not in cols:
+                conn.execute("ALTER TABLE assets ADD COLUMN is_hidden INTEGER NOT NULL DEFAULT 0")
+                conn.commit()
             conn.execute("CREATE INDEX IF NOT EXISTS idx_assets_family ON assets(is_deleted, model_family)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_assets_hidden ON assets(is_deleted, is_hidden)")
             conn.commit()
             self._backfill_model_families(conn)
 
@@ -453,6 +457,7 @@ class VaultDB:
         flag: Optional[str] = None,
         comfy_version: Optional[str] = None,
         show_deleted: bool = False,
+        show_hidden: bool = False,
         collapse_recipes: bool = False,
         sort: str = "newest",
         limit: int = 300,
@@ -461,6 +466,8 @@ class VaultDB:
         conn = self._conn()
         where = ["a.is_deleted = ?"]
         params: List[Any] = [1 if show_deleted else 0]
+        if not show_deleted and not show_hidden:
+            where.append("COALESCE(a.is_hidden, 0) = 0")
 
         if folder is not None and folder != "__ALL__":
             if folder == "":
@@ -561,6 +568,7 @@ class VaultDB:
                        a.thumb_name, a.comfy_version, a.workflow_hash, a.workflow_name,
                        a.recipe_hash, a.base_model, a.primary_prompt, a.loras_json,
                        a.seed, a.steps, a.cfg, a.sampler, a.rating, a.flag, a.notes, a.parent_id,
+                       COALESCE(a.is_hidden, 0) AS is_hidden,
                        a.grp_count AS recipe_count
                 FROM ranked a
                 WHERE a.rn = 1
@@ -578,6 +586,7 @@ class VaultDB:
                        a.thumb_name, a.comfy_version, a.workflow_hash, a.workflow_name,
                        a.recipe_hash, a.base_model, a.primary_prompt, a.loras_json,
                        a.seed, a.steps, a.cfg, a.sampler, a.rating, a.flag, a.notes, a.parent_id,
+                       COALESCE(a.is_hidden, 0) AS is_hidden,
                        CASE WHEN a.recipe_hash IS NULL THEN 1
                             ELSE (SELECT COUNT(*) FROM assets b WHERE b.is_deleted = 0 AND b.recipe_hash = a.recipe_hash)
                        END AS recipe_count
@@ -650,6 +659,7 @@ class VaultDB:
                     "flag": r["flag"],
                     "notes": r["notes"],
                     "parent_id": r["parent_id"],
+                    "is_hidden": int(r["is_hidden"] or 0),
                     "tags": tags_map.get(r["id"], []),
                 }
             )
@@ -817,6 +827,7 @@ class VaultDB:
         flag: Optional[str] = None,
         notes: Optional[str] = None,
         is_deleted: Optional[int] = None,
+        is_hidden: Optional[int] = None,
     ) -> bool:
         with self._write_lock:
             conn = self._conn()
@@ -834,6 +845,9 @@ class VaultDB:
             if is_deleted is not None:
                 sets.append("is_deleted = ?")
                 vals.append(1 if is_deleted else 0)
+            if is_hidden is not None:
+                sets.append("is_hidden = ?")
+                vals.append(1 if is_hidden else 0)
             if not sets:
                 return False
             vals.append(asset_id)
@@ -871,6 +885,7 @@ class VaultDB:
             """
         ).fetchone()
         trash_count = conn.execute("SELECT COUNT(*) FROM assets WHERE is_deleted = 1").fetchone()[0]
+        hidden_count = conn.execute("SELECT COUNT(*) FROM assets WHERE is_deleted = 0 AND COALESCE(is_hidden, 0) = 1").fetchone()[0]
 
         folders = [
             {"folder": r["folder"], "count": r["cnt"]}
@@ -950,6 +965,7 @@ class VaultDB:
                 "picked": counts["picked"] or 0,
                 "rejected": counts["rejected"] or 0,
                 "trash": trash_count,
+                "hidden": hidden_count,
             },
             "folders": folders,
             "loras": loras,

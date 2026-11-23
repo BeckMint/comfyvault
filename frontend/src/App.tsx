@@ -40,6 +40,7 @@ const INITIAL_FILTER: AssetFilter = {
   flag: "",
   comfyVersion: "",
   showDeleted: false,
+  showHidden: false,
   collapseRecipes: false,
   sort: "newest",
 };
@@ -279,6 +280,23 @@ export default function App() {
 
   const checkedList = Array.from(checkedIds);
 
+  const handleQuickHide = useCallback(
+    async (asset: AssetListItem) => {
+      const nextHidden = asset.is_hidden ? 0 : 1;
+      await api.patchAsset(asset.id, { is_hidden: nextHidden });
+      if (nextHidden === 1 && !filter.showHidden) {
+        setItems((prev) => prev.filter((x) => x.id !== asset.id));
+        setTotal((t) => Math.max(0, t - 1));
+        if (selectedId === asset.id) setSelectedId(null);
+      } else {
+        setItems((prev) => prev.map((x) => (x.id === asset.id ? { ...x, is_hidden: nextHidden } : x)));
+      }
+      loadFacets();
+      showToast(nextHidden ? "已隐藏资产（可点顶部眼睛图标反隐藏）" : "已取消隐藏");
+    },
+    [filter.showHidden, selectedId, loadFacets, showToast]
+  );
+
   const handleBatchTrash = async () => {
     if (!checkedList.length) return;
     await api.batchTrash(checkedList, true);
@@ -324,6 +342,7 @@ export default function App() {
         cardMinWidth={cardMinWidth}
         onCardMinWidthChange={setCardMinWidth}
         total={total}
+        hiddenCount={facets?.counts.hidden || 0}
         comfyStatus={comfyStatus}
         scanStatus={scanStatus}
         thumbStatus={thumbStatus}
@@ -537,6 +556,7 @@ export default function App() {
               onSetCheckedIds={setCheckedIds}
               onQuickRate={handleQuickRate}
               onQuickFlag={handleQuickFlag}
+              onQuickHide={handleQuickHide}
               onFilterRecipe={(hash) => handleFilterChange({ recipeHash: hash, collapseRecipes: false })}
               onLoadMore={() => loadAssets(false)}
             />

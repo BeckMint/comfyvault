@@ -40,6 +40,7 @@ export const api = {
     if (filter.flag) p.set("flag", filter.flag);
     if (filter.comfyVersion) p.set("comfy_version", filter.comfyVersion);
     if (filter.showDeleted) p.set("show_deleted", "1");
+    if (filter.showHidden) p.set("show_hidden", "1");
     if (filter.collapseRecipes) p.set("collapse_recipes", "1");
     p.set("sort", filter.sort);
     p.set("limit", String(limit));
@@ -49,7 +50,7 @@ export const api = {
 
   getAssetDetail: (id: number) => req<AssetDetail>(`/api/assets/${id}`),
 
-  patchAsset: (id: number, patch: { rating?: number; flag?: string; notes?: string; is_deleted?: boolean }) =>
+  patchAsset: (id: number, patch: { rating?: number; flag?: string; notes?: string; is_deleted?: boolean; is_hidden?: number | boolean }) =>
     req<AssetDetail>(`/api/assets/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
 
   batchTrash: (ids: number[], is_deleted = true) =>

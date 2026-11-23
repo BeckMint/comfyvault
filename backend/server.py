@@ -119,6 +119,7 @@ class VaultApp:
         flag = q.get("flag") or None
         comfy_version = q.get("comfy_version") or None
         show_deleted = q.get("show_deleted") in ("1", "true")
+        show_hidden = q.get("show_hidden") in ("1", "true")
         collapse_recipes = q.get("collapse_recipes") in ("1", "true")
         sort = q.get("sort", "newest")
         limit = max(1, min(1000, int(q.get("limit", "250"))))
@@ -140,6 +141,7 @@ class VaultApp:
             flag=flag,
             comfy_version=comfy_version,
             show_deleted=show_deleted,
+            show_hidden=show_hidden,
             collapse_recipes=collapse_recipes,
             sort=sort,
             limit=limit,
@@ -164,6 +166,7 @@ class VaultApp:
             flag=body.get("flag"),
             notes=body.get("notes"),
             is_deleted=body.get("is_deleted"),
+            is_hidden=body.get("is_hidden"),
         )
         detail = await asyncio.to_thread(self.db.get_asset_detail, asset_id)
         return web.json_response(detail or {"ok": True})

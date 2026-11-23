@@ -4,6 +4,8 @@ import {
   ChevronDown,
   Columns2,
   ExternalLink,
+  Eye,
+  EyeOff,
   Grid,
   Languages,
   Layers,
@@ -30,6 +32,7 @@ interface Props {
   cardMinWidth: number;
   onCardMinWidthChange: (w: number) => void;
   total: number;
+  hiddenCount?: number;
   comfyStatus: ComfyStatus;
   scanStatus: ScanStatus;
   thumbStatus: ThumbStatus;
@@ -48,6 +51,7 @@ export const TopBar: React.FC<Props> = ({
   cardMinWidth,
   onCardMinWidthChange,
   total,
+  hiddenCount = 0,
   comfyStatus,
   scanStatus,
   thumbStatus,
@@ -368,6 +372,25 @@ export const TopBar: React.FC<Props> = ({
           {scanStatus.scanning
             ? `${t("扫描", "Scan")} ${scanStatus.scanned}/${scanStatus.total || "..."}`
             : t("扫描目录", "Scan")}
+        </button>
+
+        {/* 2.5. Show/Hide Hidden Assets Toggle */}
+        <button
+          type="button"
+          onClick={() => onFilterChange({ showHidden: !filter.showHidden })}
+          className={`h-8 px-2 rounded-lg border text-xs font-medium flex items-center gap-1 shrink-0 transition-colors ${
+            filter.showHidden
+              ? "bg-amber-500/20 border-amber-500/60 text-amber-300 hover:bg-amber-500/30"
+              : "bg-[#161a25] hover:bg-zinc-800 border-zinc-800 text-zinc-300 hover:text-white"
+          }`}
+          title={
+            filter.showHidden
+              ? t("当前正在显示隐藏资产，点击恢复隐藏", "Showing hidden assets — click to hide them again")
+              : t("显示已隐藏资产（反隐藏）", "Show hidden assets")
+          }
+        >
+          {filter.showHidden ? <Eye className="w-3.5 h-3.5 text-amber-400" /> : <EyeOff className="w-3.5 h-3.5 text-zinc-400" />}
+          {hiddenCount > 0 && <span className="font-mono text-[11px]">{hiddenCount}</span>}
         </button>
 
         {/* 3. Language Toggle (ZH / EN) */}

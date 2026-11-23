@@ -42,6 +42,7 @@ export interface AssetListItem {
   flag: "" | "pick" | "reject";
   notes: string;
   parent_id: number | null;
+  is_hidden?: number;
   tags: TagItem[];
 }
 
@@ -143,6 +144,7 @@ export interface SidebarFacets {
     picked: number;
     rejected: number;
     trash: number;
+    hidden?: number;
   };
   folders: Array<{ folder: string; count: number }>;
   loras: Array<{ name: string; count: number }>;
@@ -210,6 +212,7 @@ export interface AssetFilter {
   flag: "" | "pick" | "reject";
   comfyVersion: string;
   showDeleted: boolean;
+  showHidden: boolean;
   collapseRecipes: boolean;
   sort: "newest" | "oldest" | "rating" | "largest" | "name";
 }

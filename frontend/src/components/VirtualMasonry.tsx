@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, Film, Layers, Star, ThumbsDown, ThumbsUp } from "lucide-react";
+import { Check, Eye, EyeOff, Film, Layers, Star, ThumbsDown, ThumbsUp } from "lucide-react";
 import type { AssetListItem } from "../types";
 
 interface Props {
@@ -15,6 +15,7 @@ interface Props {
   onSetCheckedIds: (ids: Set<number>) => void;
   onQuickRate: (id: number, rating: number) => void;
   onQuickFlag: (id: number, flag: "" | "pick" | "reject") => void;
+  onQuickHide: (item: AssetListItem) => void;
   onFilterRecipe: (recipeHash: string) => void;
   onLoadMore: () => void;
 }
@@ -42,6 +43,7 @@ const AssetCard = React.memo(function AssetCard({
   onToggleCheck,
   onQuickRate,
   onQuickFlag,
+  onQuickHide,
   onFilterRecipe,
 }: {
   placed: PlacedItem;
@@ -53,6 +55,7 @@ const AssetCard = React.memo(function AssetCard({
   onToggleCheck: (id: number) => void;
   onQuickRate: (id: number, r: number) => void;
   onQuickFlag: (id: number, f: "" | "pick" | "reject") => void;
+  onQuickHide: (a: AssetListItem) => void;
   onFilterRecipe: (hash: string) => void;
 }) {
   const { item, x, y, w, h } = placed;
@@ -227,8 +230,27 @@ const AssetCard = React.memo(function AssetCard({
             >
               <ThumbsDown className="w-3 h-3" />
             </button>
+            <button
+              type="button"
+              title={item.is_hidden ? "取消隐藏" : "隐藏该资产"}
+              onClick={(e) => {
+                e.stopPropagation();
+                onQuickHide(item);
+              }}
+              className={`p-1 rounded ${
+                item.is_hidden ? "bg-amber-500 text-black" : "bg-black/60 text-zinc-300 hover:text-amber-300"
+              }`}
+            >
+              {item.is_hidden ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+            </button>
           </div>
         </div>
+        {Boolean(item.is_hidden) && (
+          <div className="absolute top-2 left-9 z-10 px-1.5 py-0.5 rounded bg-amber-500/90 text-black text-[10px] font-bold flex items-center gap-0.5 shadow">
+            <EyeOff className="w-2.5 h-2.5" />
+            隐藏
+          </div>
+        )}
       </div>
 
       {/* Compact Card Footer */}
@@ -276,6 +298,7 @@ export const VirtualMasonry: React.FC<Props> = ({
   onSetCheckedIds,
   onQuickRate,
   onQuickFlag,
+  onQuickHide,
   onFilterRecipe,
   onLoadMore,
 }) => {
@@ -493,6 +516,7 @@ export const VirtualMasonry: React.FC<Props> = ({
               onToggleCheck={onToggleCheck}
               onQuickRate={onQuickRate}
               onQuickFlag={onQuickFlag}
+              onQuickHide={onQuickHide}
               onFilterRecipe={onFilterRecipe}
             />
           ))}
