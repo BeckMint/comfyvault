@@ -1,9 +1,10 @@
 import os
+import re
 import subprocess
 from pathlib import Path
 
 # Application version (increment patch +0.0.1 per iteration)
-VAULT_VERSION = "0.1.7"
+VAULT_VERSION = "0.1.8"
 
 # Base paths
 VAULT_ROOT = Path(__file__).resolve().parent.parent
@@ -15,11 +16,28 @@ DB_PATH = DATA_DIR / "vault.db"
 THUMBS_DIR = DATA_DIR / "thumbs"
 FRONTEND_DIST = VAULT_ROOT / "frontend" / "dist"
 
+
+def _detect_comfy_port() -> int:
+    env_p = os.environ.get("COMFYUI_PORT")
+    if env_p and env_p.isdigit():
+        return int(env_p)
+    bat = PORTABLE_ROOT / "run_nvidia_gpu.bat"
+    if bat.exists():
+        try:
+            txt = bat.read_text(encoding="utf-8", errors="ignore")
+            m = re.search(r"--port(?:=|\s+)(\d+)", txt, re.IGNORECASE)
+            if m:
+                return int(m.group(1))
+        except Exception:
+            pass
+    return 8188
+
+
 # Server settings
 VAULT_HOST = os.environ.get("COMFYVAULT_HOST", "127.0.0.1")
 VAULT_PORT = int(os.environ.get("COMFYVAULT_PORT", "8189"))
 COMFY_HOST = os.environ.get("COMFYUI_HOST", "127.0.0.1")
-COMFY_PORT = int(os.environ.get("COMFYUI_PORT", "8188"))
+COMFY_PORT = _detect_comfy_port()
 COMFY_HTTP_URL = f"http://{COMFY_HOST}:{COMFY_PORT}"
 COMFY_WS_URL = f"ws://{COMFY_HOST}:{COMFY_PORT}/ws"
 

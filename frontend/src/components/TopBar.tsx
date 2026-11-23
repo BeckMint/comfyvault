@@ -295,7 +295,12 @@ export const TopBar: React.FC<Props> = ({
               <div className="px-3 py-1.5 border-b border-zinc-800 mb-1">
                 <div className="text-[11px] font-semibold text-zinc-100 flex items-center gap-1.5">
                   <span className={`w-2 h-2 rounded-full ${comfyStatus.online ? "bg-emerald-400" : "bg-zinc-500"}`} />
-                  {comfyStatus.online ? t("运行中 (8188)", "Running (8188)") : t("已停止", "Stopped")}
+                  {comfyStatus.online
+                    ? t(
+                        `运行中 (${(comfyStatus.comfy_url || ":8188").split(":").pop()?.replace("/", "") || "8188"})`,
+                        `Running (${(comfyStatus.comfy_url || ":8188").split(":").pop()?.replace("/", "") || "8188"})`
+                      )
+                    : t("已停止", "Stopped")}
                 </div>
                 {comfyStatus.comfy_version && (
                   <div className="text-[10px] text-zinc-500 font-mono truncate mt-0.5" title={comfyStatus.comfy_version}>

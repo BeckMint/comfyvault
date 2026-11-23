@@ -40,10 +40,28 @@ namespace ComfyUILauncher
         private static readonly string BatPath = Path.Combine(BaseDir, "run_nvidia_gpu.bat");
         private static readonly string PythonExe = Path.Combine(BaseDir, @"python_embeded\python.exe");
         private static readonly string VaultDir = Path.Combine(BaseDir, "ComfyVault");
-        private static readonly string WebUrl = "http://127.0.0.1:8188/";
-        private static readonly string SystemStatsUrl = "http://127.0.0.1:8188/system_stats";
+        private static readonly int ComfyPort = DetectComfyPort();
+        private static readonly string WebUrl = "http://127.0.0.1:" + ComfyPort + "/";
+        private static readonly string SystemStatsUrl = "http://127.0.0.1:" + ComfyPort + "/system_stats";
         private static readonly string VaultUrl = "http://127.0.0.1:8189/";
         private static readonly string VaultHealthUrl = "http://127.0.0.1:8189/api/health";
+
+        private static int DetectComfyPort()
+        {
+            try
+            {
+                if (File.Exists(BatPath))
+                {
+                    string txt = File.ReadAllText(BatPath);
+                    Match m = Regex.Match(txt, @"--port(?:=|\s+)(\d+)", RegexOptions.IgnoreCase);
+                    int p;
+                    if (m.Success && int.TryParse(m.Groups[1].Value, out p) && p > 0 && p < 65536)
+                        return p;
+                }
+            }
+            catch { }
+            return 8188;
+        }
 
         private static bool pendingOpenComfy = false;
         private static bool pendingOpenVault = false;
@@ -88,8 +106,8 @@ namespace ComfyUILauncher
                 vaultMenu.DropDownItems.Add(stopVaultItem);
 
                 // ComfyUI independent submenu
-                ToolStripMenuItem comfyMenu = new ToolStripMenuItem("ComfyUI 主程序 (8188)");
-                ToolStripMenuItem openComfyItem = new ToolStripMenuItem("打开网页 (http://127.0.0.1:8188)", null, (s, e) => OpenUrl(WebUrl));
+                ToolStripMenuItem comfyMenu = new ToolStripMenuItem("ComfyUI 主程序 (" + ComfyPort + ")");
+                ToolStripMenuItem openComfyItem = new ToolStripMenuItem("打开网页 (http://127.0.0.1:" + ComfyPort + ")", null, (s, e) => OpenUrl(WebUrl));
                 startComfyItem = new ToolStripMenuItem("启动 ComfyUI", null, (s, e) => { StartComfy(true); RefreshStatus(); });
                 restartComfyItem = new ToolStripMenuItem("重启 ComfyUI", null, (s, e) => ThreadPool.QueueUserWorkItem(_ => RestartComfy()));
                 stopComfyItem = new ToolStripMenuItem("停止 ComfyUI", null, (s, e) => { StopComfy(true); RefreshStatus(); });
@@ -187,7 +205,7 @@ namespace ComfyUILauncher
         {
             switch (status)
             {
-                case ComfyStatus.Running: return "运行中 (8188)";
+                case ComfyStatus.Running: return "运行中 (" + ComfyPort + ")";
                 case ComfyStatus.Starting: return "启动中...";
                 default: return "已停止";
             }
@@ -197,7 +215,7 @@ namespace ComfyUILauncher
         {
             if (IsHttpResponding(SystemStatsUrl))
                 return ComfyStatus.Running;
-            if (GetPortOwners(8188).Count > 0 || GetComfyPids().Count > 0)
+            if (GetPortOwners(ComfyPort).Count > 0 || GetComfyPids().Count > 0)
                 return ComfyStatus.Starting;
             return ComfyStatus.Stopped;
         }
@@ -359,7 +377,7 @@ namespace ComfyUILauncher
 
         private static void StopComfy(bool showTip)
         {
-            HashSet<int> pids = new HashSet<int>(GetPortOwners(8188));
+            HashSet<int> pids = new HashSet<int>(GetPortOwners(ComfyPort));
             foreach (int pid in GetComfyPids()) pids.Add(pid);
             foreach (int pid in pids) KillPid(pid);
             if (showTip) ShowTip("已停止 ComfyUI", ToolTipIcon.Info);
