@@ -349,6 +349,27 @@ class VaultDB:
             conn.execute("UPDATE assets SET thumb_name = ? WHERE id = ?", (thumb_name, asset_id))
             conn.commit()
 
+    def update_asset_file_info(
+        self,
+        asset_id: int,
+        width: int,
+        height: int,
+        file_size: int,
+        mtime_ns: int,
+        thumb_name: Optional[str],
+    ) -> None:
+        with self._write_lock:
+            conn = self._conn()
+            conn.execute(
+                """
+                UPDATE assets
+                SET width = ?, height = ?, file_size = ?, mtime_ns = ?, thumb_name = COALESCE(?, thumb_name)
+                WHERE id = ?
+                """,
+                (width, height, file_size, mtime_ns, thumb_name, asset_id),
+            )
+            conn.commit()
+
     def update_asset_prompt(self, asset_id: int, raw_prompt_json: Dict[str, Any], parsed: Dict[str, Any]) -> bool:
         """Directly overwrite an asset's stored prompt & parsed metadata in vault.db."""
         loras = parsed.get("loras") or []

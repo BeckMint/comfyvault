@@ -113,6 +113,21 @@ export const api = {
 
   revealInExplorer: (assetId: number) => req<{ ok: boolean }>(`/api/assets/${assetId}/reveal`, { method: "POST" }),
 
+  transformAsset: (assetId: number, rotate_cw: number, flip_h: boolean) =>
+    req<{
+      ok: boolean;
+      unchanged?: boolean;
+      id?: number;
+      width?: number;
+      height?: number;
+      file_size?: number;
+      thumb_url?: string;
+      media_url?: string;
+    }>(`/api/assets/${assetId}/transform`, {
+      method: "POST",
+      body: JSON.stringify({ rotate_cw, flip_h }),
+    }),
+
   triggerScan: (force = false) =>
     req<{ started: boolean }>("/api/scan", { method: "POST", body: JSON.stringify({ force }) }),
 

@@ -1,13 +1,36 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Maximize2, Minimize2, X, ZoomIn, ZoomOut } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  FlipHorizontal2,
+  FlipVertical2,
+  Maximize2,
+  Minimize2,
+  RotateCcw,
+  RotateCw,
+  X,
+  ZoomIn,
+  ZoomOut,
+} from "lucide-react";
+import { api } from "../api";
 import { useI18n } from "../i18n";
 import type { AssetListItem } from "../types";
+
+export interface TransformedAssetInfo {
+  id: number;
+  width: number;
+  height: number;
+  file_size: number;
+  thumb_url: string;
+  media_url: string;
+}
 
 interface Props {
   items: AssetListItem[];
   currentIndex: number;
   onChangeIndex: (idx: number) => void;
   onClose: () => void;
+  onAssetTransformed?: (info: TransformedAssetInfo) => void;
 }
 
 interface ViewState {
@@ -43,9 +66,16 @@ uniform vec2 u_viewport;
 uniform vec2 u_imgSize;
 uniform vec2 u_translate;
 uniform float u_scale;
+uniform float u_rot;
+uniform float u_flipH;
 out vec2 v_uv;
 void main() {
-  vec2 scaled = a_pos * u_imgSize * u_scale;
+  vec2 p = a_pos * u_imgSize;
+  p.x *= u_flipH;
+  float c = cos(u_rot);
+  float s = sin(u_rot);
+  vec2 rotated = vec2(p.x * c - p.y * s, p.x * s + p.y * c);
+  vec2 scaled = rotated * u_scale;
   vec2 px = scaled + vec2(u_translate.x, -u_translate.y);
   vec2 clip = (px / (u_viewport * 0.5));
   gl_Position = vec4(clip, 0.0, 1.0);
@@ -70,6 +100,8 @@ interface GLRenderer {
   uImgSize: WebGLUniformLocation | null;
   uTranslate: WebGLUniformLocation | null;
   uScale: WebGLUniformLocation | null;
+  uRot: WebGLUniformLocation | null;
+  uFlipH: WebGLUniformLocation | null;
 }
 
 function initWebGL2(canvas: HTMLCanvasElement): GLRenderer | null {
@@ -145,10 +177,12 @@ function initWebGL2(canvas: HTMLCanvasElement): GLRenderer | null {
     uImgSize: gl.getUniformLocation(program, "u_imgSize"),
     uTranslate: gl.getUniformLocation(program, "u_translate"),
     uScale: gl.getUniformLocation(program, "u_scale"),
+    uRot: gl.getUniformLocation(program, "u_rot"),
+    uFlipH: gl.getUniformLocation(program, "u_flipH"),
   };
 }
 
-export const LightboxModal: React.FC<Props> = ({ items, currentIndex, onChangeIndex, onClose }) => {
+export const LightboxModal: React.FC<Props> = ({ items, currentIndex, onChangeIndex, onClose, onAssetTransformed }) => {
   const { t } = useI18n();
   const item = items[currentIndex];
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -160,6 +194,12 @@ export const LightboxModal: React.FC<Props> = ({ items, currentIndex, onChangeIn
 
   const [isZoomedUI, setIsZoomedUI] = useState(false);
   const [loadingImg, setLoadingImg] = useState(false);
+  const [transformState, setTransformState] = useState<{ rotCw: number; flipH: boolean }>({ rotCw: 0, flipH: false });
+  const transformRef = useRef<{ assetId: number | null; rotCw: number; flipH: boolean }>({
+    assetId: item?.id ?? null,
+    rotCw: 0,
+    flipH: false,
+  });
 
   const stRef = useRef<ViewState>({
     natW: item?.width || 1024,
@@ -193,11 +233,17 @@ export const LightboxModal: React.FC<Props> = ({ items, currentIndex, onChangeIn
     return Math.min((vw * 0.92) / Math.max(1, w), (vh * 0.88) / Math.max(1, h), 1);
   };
 
+  const getEffectiveSize = (natW: number, natH: number) => {
+    const swap = transformRef.current.rotCw % 180 === 90;
+    return { effW: swap ? natH : natW, effH: swap ? natW : natH };
+  };
+
   const clampPan = (tx: number, ty: number, scale: number, natW: number, natH: number) => {
     const vw = window.innerWidth;
     const vh = window.innerHeight;
-    const scaledW = natW * scale;
-    const scaledH = natH * scale;
+    const { effW, effH } = getEffectiveSize(natW, natH);
+    const scaledW = effW * scale;
+    const scaledH = effH * scale;
     const maxX = Math.max(0, (scaledW - vw) / 2 + 48);
     const maxY = Math.max(0, (scaledH - vh) / 2 + 48);
     return {
@@ -221,6 +267,7 @@ export const LightboxModal: React.FC<Props> = ({ items, currentIndex, onChangeIn
       canvas.height = targetH;
     }
 
+    const { rotCw, flipH } = transformRef.current;
     const r = glRef.current;
     if (r) {
       const { gl } = r;
@@ -235,6 +282,8 @@ export const LightboxModal: React.FC<Props> = ({ items, currentIndex, onChangeIn
       gl.uniform2f(r.uImgSize, st.natW, st.natH);
       gl.uniform2f(r.uTranslate, st.curTx, st.curTy);
       gl.uniform1f(r.uScale, st.curScale);
+      gl.uniform1f(r.uRot, (-rotCw * Math.PI) / 180);
+      gl.uniform1f(r.uFlipH, flipH ? -1.0 : 1.0);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     } else if (fallbackImgRef.current) {
       const ctx = canvas.getContext("2d");
@@ -243,15 +292,12 @@ export const LightboxModal: React.FC<Props> = ({ items, currentIndex, onChangeIn
         ctx.clearRect(0, 0, vw, vh);
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = "high";
-        const drawW = st.natW * st.curScale;
-        const drawH = st.natH * st.curScale;
-        ctx.drawImage(
-          fallbackImgRef.current,
-          vw / 2 + st.curTx - drawW / 2,
-          vh / 2 + st.curTy - drawH / 2,
-          drawW,
-          drawH
-        );
+        ctx.save();
+        ctx.translate(vw / 2 + st.curTx, vh / 2 + st.curTy);
+        ctx.rotate((rotCw * Math.PI) / 180);
+        ctx.scale(flipH ? -st.curScale : st.curScale, st.curScale);
+        ctx.drawImage(fallbackImgRef.current, -st.natW / 2, -st.natH / 2, st.natW, st.natH);
+        ctx.restore();
       }
     }
 
@@ -372,12 +418,91 @@ export const LightboxModal: React.FC<Props> = ({ items, currentIndex, onChangeIn
     }
   }, [item?.media_type]);
 
+  // Commit pending rotation/flip to backend when leaving current image (switch or close)
+  const commitTransformIfDirty = useCallback(() => {
+    const cur = transformRef.current;
+    if (!cur.assetId || (cur.rotCw === 0 && !cur.flipH)) return;
+    const { assetId, rotCw, flipH } = cur;
+    transformRef.current = { assetId, rotCw: 0, flipH: false };
+    setTransformState({ rotCw: 0, flipH: false });
+    api
+      .transformAsset(assetId, rotCw, flipH)
+      .then((res) => {
+        if (res.ok && !res.unchanged && res.id && res.width && res.height && res.thumb_url && res.media_url) {
+          onAssetTransformed?.({
+            id: res.id,
+            width: res.width,
+            height: res.height,
+            file_size: res.file_size || 0,
+            thumb_url: res.thumb_url,
+            media_url: res.media_url,
+          });
+        }
+      })
+      .catch(() => {
+        // silently ignore or handled via reload
+      });
+  }, [onAssetTransformed]);
+
+  const handleCloseSafe = useCallback(() => {
+    commitTransformIfDirty();
+    onClose();
+  }, [commitTransformIfDirty, onClose]);
+
+  const handleChangeIndexSafe = useCallback(
+    (idx: number) => {
+      commitTransformIfDirty();
+      onChangeIndex(idx);
+    },
+    [commitTransformIfDirty, onChangeIndex]
+  );
+
+  const applyTransformOp = useCallback(
+    (op: "rot_ccw" | "rot_cw" | "flip_h" | "flip_v") => {
+      if (!item || item.media_type !== "image" || !stRef.current.ready) return;
+      const cur = transformRef.current;
+      let nextRot = cur.rotCw;
+      let nextFlip = cur.flipH;
+      if (op === "rot_cw") {
+        nextRot = (cur.rotCw + 90) % 360;
+      } else if (op === "rot_ccw") {
+        nextRot = (cur.rotCw + 270) % 360;
+      } else if (op === "flip_h") {
+        nextRot = (360 - cur.rotCw) % 360;
+        nextFlip = !cur.flipH;
+      } else if (op === "flip_v") {
+        nextRot = (180 - cur.rotCw + 360) % 360;
+        nextFlip = !cur.flipH;
+      }
+      transformRef.current = { assetId: item.id, rotCw: nextRot, flipH: nextFlip };
+      setTransformState({ rotCw: nextRot, flipH: nextFlip });
+
+      const st = stRef.current;
+      const { effW, effH } = getEffectiveSize(st.natW, st.natH);
+      const nextFit = computeFitScale(effW, effH);
+      st.fitScale = nextFit;
+      st.curScale = nextFit;
+      st.targetScale = nextFit;
+      st.curTx = 0;
+      st.curTy = 0;
+      st.targetTx = 0;
+      st.targetTy = 0;
+      st.anchorActive = false;
+      if (dimTextRef.current) dimTextRef.current.textContent = `${effW} × ${effH}`;
+      syncZoomedFlag();
+      drawFrame();
+    },
+    [item, drawFrame, syncZoomedFlag]
+  );
+
   // Upload image ONCE to GPU texture with hardware trilinear mipmaps
   useEffect(() => {
     if (!item || item.media_type !== "image") return;
     let cancelled = false;
     setLoadingImg(true);
     stRef.current.ready = false;
+    transformRef.current = { assetId: item.id, rotCw: 0, flipH: false };
+    setTransformState({ rotCw: 0, flipH: false });
 
     const load = async () => {
       try {
@@ -470,18 +595,33 @@ export const LightboxModal: React.FC<Props> = ({ items, currentIndex, onChangeIn
       if (e.key === "Escape") {
         e.preventDefault();
         e.stopPropagation();
-        onClose();
+        handleCloseSafe();
       } else if (e.key === "ArrowLeft" && currentIndex > 0) {
         e.preventDefault();
-        onChangeIndex(currentIndex - 1);
+        handleChangeIndexSafe(currentIndex - 1);
       } else if (e.key === "ArrowRight" && currentIndex < items.length - 1) {
         e.preventDefault();
-        onChangeIndex(currentIndex + 1);
+        handleChangeIndexSafe(currentIndex + 1);
+      } else if (item?.media_type === "image") {
+        const k = e.key.toLowerCase();
+        if (k === "q" || e.key === "[") {
+          e.preventDefault();
+          applyTransformOp("rot_ccw");
+        } else if (k === "e" || e.key === "]") {
+          e.preventDefault();
+          applyTransformOp("rot_cw");
+        } else if (k === "h") {
+          e.preventDefault();
+          applyTransformOp("flip_h");
+        } else if (k === "v") {
+          e.preventDefault();
+          applyTransformOp("flip_v");
+        }
       }
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [onClose, currentIndex, items.length, onChangeIndex]);
+  }, [handleCloseSafe, handleChangeIndexSafe, applyTransformOp, currentIndex, items.length, item?.media_type]);
 
   // Non-passive wheel zoom (silky exponential up to 400%)
   useEffect(() => {
@@ -547,8 +687,9 @@ export const LightboxModal: React.FC<Props> = ({ items, currentIndex, onChangeIn
     const st = stRef.current;
     const vw = window.innerWidth;
     const vh = window.innerHeight;
-    const halfW = (st.natW * st.curScale) / 2;
-    const halfH = (st.natH * st.curScale) / 2;
+    const { effW, effH } = getEffectiveSize(st.natW, st.natH);
+    const halfW = (effW * st.curScale) / 2;
+    const halfH = (effH * st.curScale) / 2;
     const cx = vw / 2 + st.curTx;
     const cy = vh / 2 + st.curTy;
     return Math.abs(clientX - cx) <= halfW && Math.abs(clientY - cy) <= halfH;
@@ -582,7 +723,7 @@ export const LightboxModal: React.FC<Props> = ({ items, currentIndex, onChangeIn
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!stRef.current.ready) return;
     if (!isPointInsideImage(e.clientX, e.clientY)) {
-      onClose();
+      handleCloseSafe();
     }
   };
 
@@ -612,54 +753,99 @@ export const LightboxModal: React.FC<Props> = ({ items, currentIndex, onChangeIn
           <span className="text-zinc-500 text-[11px] shrink-0">
             {currentIndex + 1} / {items.length}
           </span>
+          {(transformState.rotCw !== 0 || transformState.flipH) && (
+            <span className="px-2 py-0.5 rounded bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[10px] font-medium shrink-0">
+              {t("已翻转 · 切图或退出自动保存", "Transformed · Auto-saves on Next/Close")}
+            </span>
+          )}
         </div>
 
         <div className="pointer-events-auto flex items-center gap-1.5">
           {item.media_type === "image" && (
-            <div className="flex items-center gap-1 px-1.5 py-1 rounded-xl bg-black/80 border border-white/10">
-              <button
-                type="button"
-                title={t("缩小", "Zoom Out")}
-                onClick={() => {
-                  const st = stRef.current;
-                  const ns = Math.max(Math.min(st.fitScale * 0.5, 0.1), st.targetScale / 1.35);
-                  if (ns <= st.fitScale * 1.04) animateToFit();
-                  else zoomAtPoint(window.innerWidth / 2, window.innerHeight / 2, ns);
-                }}
-                className="p-1.5 rounded-lg hover:bg-white/10 text-zinc-300"
-              >
-                <ZoomOut className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                title={isZoomedUI ? t("适应窗口 (双击图片)", "Fit to Window (Double-click)") : t("放大到 100% (双击图片)", "Zoom to 100% (Double-click)")}
-                onClick={() => {
-                  if (isZoomedUI) animateToFit();
-                  else zoomAtPoint(window.innerWidth / 2, window.innerHeight / 2, 1.0);
-                }}
-                className="px-2 py-1 rounded-lg hover:bg-white/10 text-xs font-mono text-zinc-200 flex items-center gap-1"
-              >
-                {isZoomedUI ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
-                {isZoomedUI ? t("适应", "Fit") : "100%"}
-              </button>
-              <button
-                type="button"
-                title={t("放大 (最大 400%)", "Zoom In (max 400%)")}
-                onClick={() => {
-                  const st = stRef.current;
-                  const ns = Math.min(4.0, st.targetScale * 1.35);
-                  zoomAtPoint(window.innerWidth / 2, window.innerHeight / 2, ns);
-                }}
-                className="p-1.5 rounded-lg hover:bg-white/10 text-zinc-300"
-              >
-                <ZoomIn className="w-4 h-4" />
-              </button>
-            </div>
+            <>
+              {/* Rotate & Flip Controls */}
+              <div className="flex items-center gap-0.5 px-1.5 py-1 rounded-xl bg-black/80 border border-white/10">
+                <button
+                  type="button"
+                  title={t("向左旋转 90° (Q)", "Rotate Left 90° (Q)")}
+                  onClick={() => applyTransformOp("rot_ccw")}
+                  className="p-1.5 rounded-lg hover:bg-white/10 text-zinc-300 hover:text-white"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  title={t("向右旋转 90° (E)", "Rotate Right 90° (E)")}
+                  onClick={() => applyTransformOp("rot_cw")}
+                  className="p-1.5 rounded-lg hover:bg-white/10 text-zinc-300 hover:text-white"
+                >
+                  <RotateCw className="w-4 h-4" />
+                </button>
+                <div className="w-px h-4 bg-white/15 mx-0.5" />
+                <button
+                  type="button"
+                  title={t("水平镜像翻转 (H)", "Flip Horizontal (H)")}
+                  onClick={() => applyTransformOp("flip_h")}
+                  className="p-1.5 rounded-lg hover:bg-white/10 text-zinc-300 hover:text-white"
+                >
+                  <FlipHorizontal2 className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  title={t("垂直镜像翻转 (V)", "Flip Vertical (V)")}
+                  onClick={() => applyTransformOp("flip_v")}
+                  className="p-1.5 rounded-lg hover:bg-white/10 text-zinc-300 hover:text-white"
+                >
+                  <FlipVertical2 className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Zoom Controls */}
+              <div className="flex items-center gap-1 px-1.5 py-1 rounded-xl bg-black/80 border border-white/10">
+                <button
+                  type="button"
+                  title={t("缩小", "Zoom Out")}
+                  onClick={() => {
+                    const st = stRef.current;
+                    const ns = Math.max(Math.min(st.fitScale * 0.5, 0.1), st.targetScale / 1.35);
+                    if (ns <= st.fitScale * 1.04) animateToFit();
+                    else zoomAtPoint(window.innerWidth / 2, window.innerHeight / 2, ns);
+                  }}
+                  className="p-1.5 rounded-lg hover:bg-white/10 text-zinc-300"
+                >
+                  <ZoomOut className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  title={isZoomedUI ? t("适应窗口 (双击图片)", "Fit to Window (Double-click)") : t("放大到 100% (双击图片)", "Zoom to 100% (Double-click)")}
+                  onClick={() => {
+                    if (isZoomedUI) animateToFit();
+                    else zoomAtPoint(window.innerWidth / 2, window.innerHeight / 2, 1.0);
+                  }}
+                  className="px-2 py-1 rounded-lg hover:bg-white/10 text-xs font-mono text-zinc-200 flex items-center gap-1"
+                >
+                  {isZoomedUI ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+                  {isZoomedUI ? t("适应", "Fit") : "100%"}
+                </button>
+                <button
+                  type="button"
+                  title={t("放大 (最大 400%)", "Zoom In (max 400%)")}
+                  onClick={() => {
+                    const st = stRef.current;
+                    const ns = Math.min(4.0, st.targetScale * 1.35);
+                    zoomAtPoint(window.innerWidth / 2, window.innerHeight / 2, ns);
+                  }}
+                  className="p-1.5 rounded-lg hover:bg-white/10 text-zinc-300"
+                >
+                  <ZoomIn className="w-4 h-4" />
+                </button>
+              </div>
+            </>
           )}
 
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleCloseSafe}
             title={t("关闭 (Esc)", "Close (Esc)")}
             className="p-2 rounded-xl bg-black/80 hover:bg-rose-600/80 border border-white/15 text-zinc-200 hover:text-white transition-colors"
           >
@@ -672,7 +858,7 @@ export const LightboxModal: React.FC<Props> = ({ items, currentIndex, onChangeIn
       {currentIndex > 0 && (
         <button
           type="button"
-          onClick={() => onChangeIndex(currentIndex - 1)}
+          onClick={() => handleChangeIndexSafe(currentIndex - 1)}
           title={t("上一张 (←)", "Previous (←)")}
           className="fixed left-4 top-1/2 -translate-y-1/2 z-20 p-2.5 rounded-full bg-black/70 hover:bg-black/90 border border-white/15 text-zinc-200 hover:text-white transition-colors"
         >
@@ -682,7 +868,7 @@ export const LightboxModal: React.FC<Props> = ({ items, currentIndex, onChangeIn
       {currentIndex < items.length - 1 && (
         <button
           type="button"
-          onClick={() => onChangeIndex(currentIndex + 1)}
+          onClick={() => handleChangeIndexSafe(currentIndex + 1)}
           title={t("下一张 (→)", "Next (→)")}
           className="fixed right-4 top-1/2 -translate-y-1/2 z-20 p-2.5 rounded-full bg-black/70 hover:bg-black/90 border border-white/15 text-zinc-200 hover:text-white transition-colors"
         >
@@ -723,8 +909,8 @@ export const LightboxModal: React.FC<Props> = ({ items, currentIndex, onChangeIn
       {item.media_type === "image" && (
         <div className="fixed bottom-3 left-1/2 -translate-x-1/2 z-20 px-3 py-1 rounded-full bg-black/75 border border-white/10 text-[11px] text-zinc-400 pointer-events-none">
           {t(
-            "WebGL2 硬件加速 · 滚轮无级缩放 (最高 400%) · 双击任意点 100% / 适应 · 左键拖动 · ←/→ 切图 · Esc 关闭",
-            "WebGL2 GPU Accelerated · Wheel Smooth Zoom (up to 400%) · Double-click 100% / Fit · Drag to Pan · ←/→ Navigate · Esc Close"
+            "WebGL2 硬件加速 · 滚轮缩放 · 双击 100%/适应 · Q/E 旋转 · H/V 镜像 (切图或关闭自动保存) · ←/→ 切图 · Esc 关闭",
+            "WebGL2 GPU · Wheel Zoom · Double-click 100%/Fit · Q/E Rotate · H/V Flip (Auto-saves on Next/Close) · ←/→ Nav · Esc Close"
           )}
         </div>
       )}

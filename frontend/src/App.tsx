@@ -697,6 +697,24 @@ export default function App() {
             setLightboxIndex(idx);
             if (items[idx]) setSelectedId(items[idx].id);
           }}
+          onAssetTransformed={(info) => {
+            setItems((prev) =>
+              prev.map((x) =>
+                x.id === info.id
+                  ? {
+                      ...x,
+                      width: info.width,
+                      height: info.height,
+                      file_size: info.file_size,
+                      thumb_url: info.thumb_url,
+                      media_url: info.media_url,
+                    }
+                  : x
+              )
+            );
+            setDetailRefreshTick((tk) => tk + 1);
+            showToast(t("已自动保存翻转后的图片", "Saved rotated/flipped image"));
+          }}
           onClose={() => setLightboxIndex(null)}
         />
       )}

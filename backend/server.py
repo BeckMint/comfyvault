@@ -1122,6 +1122,99 @@ class VaultApp:
             subprocess.Popen(["explorer", "/select,", str(fp)])
         return web.json_response({"ok": True})
 
+    async def handle_transform_asset(self, request: web.Request) -> web.Response:
+        """Apply lossless 90-degree rotations and/or horizontal flip to an image asset, preserving PNG/WebP/JPEG metadata."""
+        asset_id = int(request.match_info["id"])
+        body = await request.json()
+        rotate_cw = int(body.get("rotate_cw", 0)) % 360
+        flip_h = bool(body.get("flip_h", False))
+        if rotate_cw not in (0, 90, 180, 270):
+            return web.json_response({"error": "rotate_cw must be 0, 90, 180, or 270"}, status=400)
+        if rotate_cw == 0 and not flip_h:
+            return web.json_response({"ok": True, "unchanged": True})
+
+        row = await asyncio.to_thread(self.db.get_asset_path_row, asset_id)
+        if not row:
+            return web.json_response({"error": "Asset not found"}, status=404)
+        if row.get("media_type") != "image":
+            return web.json_response({"error": "Only images can be rotated or flipped"}, status=400)
+
+        fp = self.scanner.resolve_asset_path(row["rel_path"]).resolve()
+        if not fp.exists() or not fp.is_file():
+            return web.json_response({"error": "File not found on disk"}, status=404)
+
+        def _transform_sync() -> Dict[str, Any]:
+            from PIL import Image, PngImagePlugin
+
+            ext = fp.suffix.lower()
+            with Image.open(fp) as im:
+                im.load()
+                orig_info = dict(im.info or {})
+                orig_exif = im.info.get("exif")
+                out = im.copy()
+
+            if flip_h:
+                out = out.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
+            if rotate_cw == 90:
+                out = out.transpose(Image.Transpose.ROTATE_270)
+            elif rotate_cw == 180:
+                out = out.transpose(Image.Transpose.ROTATE_180)
+            elif rotate_cw == 270:
+                out = out.transpose(Image.Transpose.ROTATE_90)
+
+            tmp_path = fp.with_name(fp.stem + ".__cv_tmp__" + fp.suffix)
+            try:
+                if ext == ".png":
+                    pnginfo = PngImagePlugin.PngInfo()
+                    for k, v in orig_info.items():
+                        if isinstance(k, str) and isinstance(v, str):
+                            try:
+                                pnginfo.add_text(k, v)
+                            except Exception:
+                                pass
+                    out.save(tmp_path, format="PNG", pnginfo=pnginfo)
+                elif ext in (".jpg", ".jpeg"):
+                    save_kwargs: Dict[str, Any] = {"format": "JPEG", "quality": 95, "subsampling": 0}
+                    if orig_exif:
+                        save_kwargs["exif"] = orig_exif
+                    if out.mode not in ("RGB", "L"):
+                        out = out.convert("RGB")
+                    out.save(tmp_path, **save_kwargs)
+                elif ext == ".webp":
+                    save_kwargs = {"format": "WEBP", "quality": 95, "method": 4}
+                    if orig_exif:
+                        save_kwargs["exif"] = orig_exif
+                    out.save(tmp_path, **save_kwargs)
+                else:
+                    out.save(tmp_path)
+                os.replace(tmp_path, fp)
+            finally:
+                if tmp_path.exists():
+                    try:
+                        tmp_path.unlink()
+                    except Exception:
+                        pass
+
+            st = fp.stat()
+            new_w, new_h = out.size
+            tname = ensure_thumbnail(fp, row["rel_path"], st.st_mtime_ns, st.st_size)
+            self.db.update_asset_file_info(asset_id, new_w, new_h, st.st_size, st.st_mtime_ns, tname)
+            return {
+                "ok": True,
+                "id": asset_id,
+                "width": new_w,
+                "height": new_h,
+                "file_size": st.st_size,
+                "thumb_url": f"/api/thumbs/{tname}" if tname else f"/api/thumb-by-id/{asset_id}?v={st.st_mtime_ns}",
+                "media_url": f"/api/media/{asset_id}?v={st.st_mtime_ns}",
+            }
+
+        try:
+            res = await asyncio.to_thread(_transform_sync)
+            return web.json_response(res)
+        except Exception as e:
+            return web.json_response({"error": f"Transform failed: {e}"}, status=500)
+
     def _resolve_safe_folder(self, folder: str) -> Path:
         folder = (folder or "").replace("\\", "/").strip("/")
         if not folder or ".." in folder.split("/"):
@@ -1258,6 +1351,7 @@ class VaultApp:
         app.router.add_post("/api/assets/{id:\\d+}/remix", self.handle_remix)
         app.router.add_post("/api/assets/{id:\\d+}/save-prompt", self.handle_save_asset_prompt)
         app.router.add_post("/api/assets/{id:\\d+}/save-as-workflow", self.handle_save_remix_as_workflow)
+        app.router.add_post("/api/assets/{id:\\d+}/transform", self.handle_transform_asset)
         app.router.add_post("/api/assets/{id:\\d+}/reveal", self.handle_reveal_in_explorer)
         app.router.add_put("/api/recipes/{recipe_hash}/note", self.handle_save_recipe_note)
         app.router.add_post("/api/tags", self.handle_create_tag)
