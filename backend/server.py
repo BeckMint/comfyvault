@@ -422,12 +422,15 @@ class VaultApp:
         bat = PORTABLE_ROOT / "run_nvidia_gpu.bat"
         if not bat.exists():
             raise FileNotFoundError(f"找不到启动脚本: {bat}")
-        # Launch minimized via cmd start, matching ComfyUI启动器.exe behavior
+        # Launch ComfyUI in its own minimized console with explicit working directory
+        si = subprocess.STARTUPINFO()
+        si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        si.wShowWindow = 7  # SW_SHOWMINNOACTIVE
         subprocess.Popen(
-            ["cmd", "/c", "start", "/min", "ComfyUI", "cmd", "/c", str(bat)],
+            ["cmd.exe", "/c", str(bat)],
             cwd=str(PORTABLE_ROOT),
-            stdin=subprocess.DEVNULL,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            startupinfo=si,
+            creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0),
         )
 
     async def handle_comfy_control(self, request: web.Request) -> web.Response:

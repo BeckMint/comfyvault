@@ -304,14 +304,13 @@ namespace ComfyUILauncher
             try
             {
                 ProcessStartInfo psi = new ProcessStartInfo();
-                psi.FileName = "cmd.exe";
-                psi.Arguments = "/c \"" + BatPath + "\"";
+                psi.FileName = BatPath;
                 psi.WorkingDirectory = BaseDir;
                 psi.UseShellExecute = true;
                 psi.WindowStyle = ProcessWindowStyle.Minimized;
                 Process.Start(psi);
                 if (openBrowser) pendingOpenComfy = true;
-                ShowTip("正在启动 ComfyUI 与 ComfyVault，就绪后自动打开网页...", ToolTipIcon.Info);
+                ShowTip("正在启动 ComfyUI，就绪后自动打开网页...", ToolTipIcon.Info);
             }
             catch (Exception ex)
             {
