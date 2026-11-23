@@ -342,6 +342,75 @@ def load_and_convert_workflow_file(
     }
 
 
+def remap_offline_widget_keys(
+    prompt_json: Dict[str, Any],
+    object_info: Dict[str, Any],
+) -> Dict[str, Any]:
+    """If a workflow was opened while ComfyUI was offline (so inputs have positional widget_0, widget_1... keys),
+    remap those positional keys to real ComfyUI input names using live object_info right before queueing.
+    """
+    out: Dict[str, Any] = {}
+    for nid, node in prompt_json.items():
+        if not isinstance(node, dict) or not isinstance(node.get("inputs"), dict):
+            out[nid] = node
+            continue
+        inps = node["inputs"]
+        widget_items = []
+        non_widget: Dict[str, Any] = {}
+        for k, v in inps.items():
+            if k.startswith("widget_") and k[7:].isdigit():
+                widget_items.append((int(k[7:]), v))
+            else:
+                non_widget[k] = v
+
+        if not widget_items:
+            out[nid] = node
+            continue
+
+        ctype = str(node.get("class_type") or "")
+        info = object_info.get(ctype) or {}
+        req_defs = (info.get("input") or {}).get("required") or {}
+        opt_defs = (info.get("input") or {}).get("optional") or {}
+
+        widget_specs: List[Tuple[str, Optional[List[Any]], Dict[str, Any]]] = []
+        for defs in (req_defs, opt_defs):
+            for k, spec in defs.items():
+                is_w, choices, opts = _is_widget_spec(spec)
+                if is_w:
+                    widget_specs.append((k, choices, opts))
+
+        if not widget_specs:
+            out[nid] = node
+            continue
+
+        max_idx = max(idx for idx, _ in widget_items)
+        wv: List[Any] = [None] * (max_idx + 1)
+        for idx, val in widget_items:
+            wv[idx] = val
+
+        linked_names = {k for k, v in non_widget.items() if isinstance(v, list)}
+        remapped = dict(non_widget)
+        wi = 0
+        for k, _choices, opts in widget_specs:
+            if wi >= len(wv):
+                break
+            val = wv[wi]
+            wi += 1
+            if k not in linked_names and val is not None:
+                remapped[k] = val
+            has_ctrl = opts.get("control_after_generate") is True or k.lower() in (
+                "seed",
+                "noise_seed",
+                "seed_num",
+                "random_seed",
+            )
+            if has_ctrl and wi < len(wv) and isinstance(wv[wi], str) and wv[wi].lower() in CONTROL_AFTER_GEN_VALUES:
+                wi += 1
+
+        out[nid] = {**node, "inputs": remapped}
+    return out
+
+
 def save_edits_to_workflow_file(
     file_path: Path,
     edited_prompt_json: Dict[str, Any],

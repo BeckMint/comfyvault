@@ -18,6 +18,7 @@ from .workflow_loader import (
     extract_class_types_from_raw,
     get_comfy_object_info_for_types,
     load_and_convert_workflow_file,
+    remap_offline_widget_keys,
     save_edits_to_workflow_file,
     scan_workflow_dirs,
 )
@@ -478,6 +479,19 @@ class VaultApp:
         if not isinstance(prompt_json, dict) or not prompt_json:
             return web.json_response({"error": "无效的 prompt_json"}, status=400)
         try:
+            # If the workflow was opened while ComfyUI was offline, auto-remap widget_0/widget_1 keys to live ComfyUI input names
+            has_offline_widgets = any(
+                isinstance(n, dict)
+                and isinstance(n.get("inputs"), dict)
+                and any(k.startswith("widget_") and k[7:].isdigit() for k in n["inputs"].keys())
+                for n in prompt_json.values()
+            )
+            if has_offline_widgets:
+                ctypes = extract_class_types_from_raw(prompt_json)
+                obj_info = await get_comfy_object_info_for_types(ctypes)
+                if obj_info:
+                    prompt_json = remap_offline_widget_keys(prompt_json, obj_info)
+
             pids = await self.bridge.run_custom_prompt(
                 prompt_json,
                 body.get("workflow_json"),
