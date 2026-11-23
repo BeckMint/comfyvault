@@ -17,6 +17,7 @@ import {
   X,
 } from "lucide-react";
 import { api, formatBytes, formatTime } from "../api";
+import { useI18n } from "../i18n";
 import type { AssetDetail, ComfyStatus, PromptNodeEntry } from "../types";
 
 interface Props {
@@ -32,12 +33,12 @@ interface Props {
   onToast: (msg: string, tone?: "ok" | "err") => void;
 }
 
-const ROLE_STYLES: Record<string, { label: string; cls: string }> = {
-  positive: { label: "正向", cls: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30" },
-  negative: { label: "负向", cls: "bg-rose-500/20 text-rose-300 border-rose-500/30" },
-  upscale: { label: "精修/放大", cls: "bg-amber-500/20 text-amber-300 border-amber-500/30" },
-  system: { label: "系统", cls: "bg-sky-500/20 text-sky-300 border-sky-500/30" },
-  prompt: { label: "提示词", cls: "bg-indigo-500/20 text-indigo-300 border-indigo-500/30" },
+const ROLE_STYLES: Record<string, { zh: string; en: string; cls: string }> = {
+  positive: { zh: "正向", en: "Positive", cls: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30" },
+  negative: { zh: "负向", en: "Negative", cls: "bg-rose-500/20 text-rose-300 border-rose-500/30" },
+  upscale: { zh: "精修/放大", en: "Upscale/Refine", cls: "bg-amber-500/20 text-amber-300 border-amber-500/30" },
+  system: { zh: "系统", en: "System", cls: "bg-sky-500/20 text-sky-300 border-sky-500/30" },
+  prompt: { zh: "提示词", en: "Prompt", cls: "bg-indigo-500/20 text-indigo-300 border-indigo-500/30" },
 };
 
 function compareNodeId(a: string, b: string): number {
@@ -66,6 +67,7 @@ export const AssetDetailDrawer: React.FC<Props> = ({
   onMutated,
   onToast,
 }) => {
+  const { t } = useI18n();
   const [detail, setDetail] = useState<AssetDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [notes, setNotes] = useState("");
@@ -92,7 +94,7 @@ export const AssetDetailDrawer: React.FC<Props> = ({
         setNotes(d.notes || "");
         setRecipeNote(d.recipe_note?.notes || "");
       })
-      .catch((e) => onToast(`加载详情失败: ${e.message}`, "err"))
+      .catch((e) => onToast(t(`加载详情失败: ${e.message}`, `Failed to load details: ${e.message}`), "err"))
       .finally(() => {
         if (active) setLoading(false);
       });
@@ -106,9 +108,9 @@ export const AssetDetailDrawer: React.FC<Props> = ({
       await navigator.clipboard.writeText(text);
       setCopiedKey(key);
       setTimeout(() => setCopiedKey(null), 1500);
-      onToast("已复制到剪贴板");
+      onToast(t("已复制到剪贴板", "Copied to clipboard"));
     } catch {
-      onToast("复制失败", "err");
+      onToast(t("复制失败", "Copy failed"), "err");
     }
   };
 
@@ -148,7 +150,7 @@ export const AssetDetailDrawer: React.FC<Props> = ({
   const handleSaveRecipeNote = async () => {
     if (!detail?.recipe_hash) return;
     await api.saveRecipeNote(detail.recipe_hash, "", recipeNote);
-    onToast("配方笔记已保存");
+    onToast(t("配方笔记已保存", "Recipe note saved"));
   };
 
   const handleReroll = async () => {
@@ -156,9 +158,9 @@ export const AssetDetailDrawer: React.FC<Props> = ({
     setRerolling(true);
     try {
       const res = await api.rerollAsset(detail.id, rerollBatch);
-      onToast(`已提交 ${res.prompt_ids.length} 个再生成任务到 ComfyUI 队列`);
+      onToast(t(`已提交 ${res.prompt_ids.length} 个再生成任务到 ComfyUI 队列`, `Queued ${res.prompt_ids.length} reroll task(s) in ComfyUI`));
     } catch (e: any) {
-      onToast(`再生成失败: ${e.message}`, "err");
+      onToast(t(`再生成失败: ${e.message}`, `Reroll failed: ${e.message}`), "err");
     } finally {
       setRerolling(false);
     }
@@ -167,11 +169,11 @@ export const AssetDetailDrawer: React.FC<Props> = ({
   const handleSaveSnippet = async (p: PromptNodeEntry) => {
     try {
       await api.createSnippet({
-        title: `${detail?.filename || "提示词"} · ${p.node_title}`,
+        title: `${detail?.filename || t("提示词", "Prompt")} · ${p.node_title}`,
         category: p.role === "negative" ? "负向" : p.role === "upscale" ? "精修" : "正向",
         content: p.text,
       });
-      onToast("已收藏到提示词片段库");
+      onToast(t("已收藏到提示词片段库", "Saved to Prompt Snippets"));
     } catch (e: any) {
       onToast(e.message, "err");
     }
@@ -185,7 +187,7 @@ export const AssetDetailDrawer: React.FC<Props> = ({
   if (!detail) {
     return (
       <aside className="w-[460px] shrink-0 h-full bg-[#10131c] border-l border-zinc-800/90 flex items-center justify-center text-zinc-500 text-sm">
-        加载资源详情...
+        {t("加载资源详情...", "Loading asset details...")}
       </aside>
     );
   }
@@ -210,7 +212,7 @@ export const AssetDetailDrawer: React.FC<Props> = ({
               type="button"
               onClick={() => api.revealInExplorer(detail.id)}
               className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100"
-              title="在文件夹中显示"
+              title={t("在文件夹中显示", "Reveal in Explorer")}
             >
               <FolderSearch className="w-4 h-4" />
             </button>
@@ -218,7 +220,7 @@ export const AssetDetailDrawer: React.FC<Props> = ({
               type="button"
               onClick={() => saveAssetPatch({ is_deleted: !detail.is_deleted })}
               className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-rose-400"
-              title={detail.is_deleted ? "从回收站恢复" : "移入回收站"}
+              title={detail.is_deleted ? t("从回收站恢复", "Restore from Trash") : t("移入回收站", "Move to Trash")}
             >
               <Trash2 className="w-4 h-4" />
             </button>
@@ -263,21 +265,21 @@ export const AssetDetailDrawer: React.FC<Props> = ({
                 onClick={handleReroll}
                 title={
                   !comfyStatus.online
-                    ? "请先启动 ComfyUI"
+                    ? t("请先启动 ComfyUI", "Please start ComfyUI first")
                     : !detail.has_raw_prompt
-                    ? "该文件无 API Prompt 元数据"
-                    : "保持当前提示词与参数不变，换新随机种再生成"
+                    ? t("该文件无 API Prompt 元数据", "No API Prompt metadata in this file")
+                    : t("保持当前提示词与参数不变，换新随机种再生成", "Keep current prompts and parameters, reroll with a new seed")
                 }
                 className="flex-1 py-2 px-2.5 text-xs font-semibold text-indigo-100 hover:bg-indigo-600/40 disabled:opacity-40 flex items-center justify-center gap-1.5 transition-colors"
               >
                 <Play className="w-3.5 h-3.5 fill-current" />
-                {rerolling ? "提交中..." : "一键再生成"}
+                {rerolling ? t("提交中...", "Queuing...") : t("一键再生成", "Quick Reroll")}
               </button>
               <select
                 value={rerollBatch}
                 onChange={(e) => setRerollBatch(Number(e.target.value))}
                 className="bg-indigo-950/80 text-indigo-200 text-[11px] px-1.5 border-l border-indigo-500/40 focus:outline-none"
-                title="连抽张数"
+                title={t("连抽张数", "Batch count")}
               >
                 <option value={1}>×1</option>
                 <option value={2}>×2</option>
@@ -289,11 +291,11 @@ export const AssetDetailDrawer: React.FC<Props> = ({
               type="button"
               disabled={!detail.has_raw_prompt}
               onClick={() => onOpenRemix(detail)}
-              title="基于此图修改提示词、LoRA权重或采样参数生成新图（原图记录保持不变）"
+              title={t("基于此图修改提示词、LoRA权重或采样参数生成新图（原图记录保持不变）", "Modify prompts, LoRA weights, or sampling parameters to generate a new variant (original asset unchanged)")}
               className="py-2 px-3 rounded-lg bg-purple-600/25 hover:bg-purple-600/40 border border-purple-500/40 text-purple-100 text-xs font-semibold disabled:opacity-40 flex items-center justify-center gap-1.5 transition-colors"
             >
               <SlidersHorizontal className="w-3.5 h-3.5" />
-              微调参数派生新图
+              {t("微调参数派生新图", "Remix Parameters")}
             </button>
           </div>
 
@@ -326,7 +328,7 @@ export const AssetDetailDrawer: React.FC<Props> = ({
                       : "bg-zinc-900 border-zinc-700 text-zinc-400 hover:text-emerald-300"
                   }`}
                 >
-                  <ThumbsUp className="w-3 h-3" /> 精选
+                  <ThumbsUp className="w-3 h-3" /> {t("精选", "Pick")}
                 </button>
                 <button
                   type="button"
@@ -337,23 +339,23 @@ export const AssetDetailDrawer: React.FC<Props> = ({
                       : "bg-zinc-900 border-zinc-700 text-zinc-400 hover:text-rose-300"
                   }`}
                 >
-                  <ThumbsDown className="w-3 h-3" /> 废片
+                  <ThumbsDown className="w-3 h-3" /> {t("废片", "Reject")}
                 </button>
               </div>
             </div>
 
             {/* Tags */}
             <div className="flex flex-wrap items-center gap-1.5">
-              {detail.tags.map((t) => (
+              {detail.tags.map((tag) => (
                 <span
-                  key={t.id}
+                  key={tag.id}
                   className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] bg-zinc-900 border border-zinc-700 text-zinc-200"
                 >
-                  <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: t.color }} />
-                  {t.name}
+                  <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: tag.color }} />
+                  {tag.name}
                   <button
                     type="button"
-                    onClick={() => handleRemoveTag(t.id)}
+                    onClick={() => handleRemoveTag(tag.id)}
                     className="text-zinc-500 hover:text-rose-400 ml-0.5"
                   >
                     <X className="w-3 h-3" />
@@ -365,7 +367,7 @@ export const AssetDetailDrawer: React.FC<Props> = ({
                   type="text"
                   value={newTag}
                   onChange={(e) => setNewTag(e.target.value)}
-                  placeholder="+ 标签回车"
+                  placeholder={t("+ 标签回车", "+ Tag + Enter")}
                   className="w-24 h-6 px-2 rounded-full bg-zinc-900 border border-zinc-700 focus:border-indigo-500 focus:outline-none text-[11px] text-zinc-200"
                 />
               </form>
@@ -380,7 +382,10 @@ export const AssetDetailDrawer: React.FC<Props> = ({
                   if (notes !== (detail.notes || "")) saveAssetPatch({ notes });
                 }}
                 rows={2}
-                placeholder="记录这张图的实验笔记（例如：脸型还原度高、手部轻微崩、适合做参考图...）"
+                placeholder={t(
+                  "记录这张图的实验笔记（例如：脸型还原度高、手部轻微崩、适合做参考图...）",
+                  "Add experiment notes for this asset (e.g. accurate face likeness, minor hand artifact, good reference...)"
+                )}
                 className="w-full p-2 rounded-lg bg-[#0d1018] border border-zinc-800 focus:border-indigo-500 focus:outline-none text-xs text-zinc-200 placeholder:text-zinc-600 resize-none"
               />
             </div>
@@ -390,7 +395,7 @@ export const AssetDetailDrawer: React.FC<Props> = ({
           <section className="space-y-2">
             <div className="flex items-center justify-between">
               <h3 className="text-xs font-semibold text-zinc-300">
-                提示词节点 ({detail.prompts.length})
+                {t("提示词节点", "Prompt Nodes")} ({detail.prompts.length})
               </h3>
               {sortedPrompts.length > 1 && (
                 <button
@@ -403,14 +408,14 @@ export const AssetDetailDrawer: React.FC<Props> = ({
                   }
                   className="text-[11px] text-indigo-400 hover:text-indigo-300 flex items-center gap-1"
                 >
-                  <Copy className="w-3 h-3" /> 复制全部节点
+                  <Copy className="w-3 h-3" /> {t("复制全部节点", "Copy All Nodes")}
                 </button>
               )}
             </div>
 
             {sortedPrompts.length === 0 ? (
               <div className="text-xs text-zinc-500 p-3 rounded-lg bg-[#151925] border border-zinc-800/70">
-                未在文件元数据中检测到提示词节点
+                {t("未在文件元数据中检测到提示词节点", "No prompt nodes detected in file metadata")}
               </div>
             ) : (
               <div className="space-y-2">
@@ -422,7 +427,7 @@ export const AssetDetailDrawer: React.FC<Props> = ({
                       <div className="px-3 py-1.5 bg-[#1a1f2e] border-b border-zinc-800/70 flex items-center justify-between gap-2">
                         <div className="flex items-center gap-1.5 min-w-0 flex-nowrap">
                           <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium border shrink-0 whitespace-nowrap ${rs.cls}`}>
-                            {rs.label}
+                            {t(rs.zh, rs.en)}
                           </span>
                           <span className="text-[11px] text-zinc-300 font-medium truncate shrink whitespace-nowrap" title={p.class_type}>
                             #{p.node_id} {p.node_title}
@@ -433,7 +438,7 @@ export const AssetDetailDrawer: React.FC<Props> = ({
                             type="button"
                             onClick={() => handleSaveSnippet(p)}
                             className="p-1 rounded hover:bg-zinc-700/70 text-zinc-400 hover:text-amber-300"
-                            title="收藏到提示词片段库"
+                            title={t("收藏到提示词片段库", "Save to Prompt Snippets")}
                           >
                             <BookmarkPlus className="w-3.5 h-3.5" />
                           </button>
@@ -443,7 +448,7 @@ export const AssetDetailDrawer: React.FC<Props> = ({
                             className="px-2 py-0.5 rounded bg-zinc-800 hover:bg-indigo-600 text-[11px] text-zinc-200 flex items-center gap-1 transition-colors"
                           >
                             {copiedKey === key ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                            复制
+                            {t("复制", "Copy")}
                           </button>
                         </div>
                       </div>
@@ -459,7 +464,7 @@ export const AssetDetailDrawer: React.FC<Props> = ({
 
           {/* LoRAs & Models */}
           <section className="space-y-2">
-            <h3 className="text-xs font-semibold text-zinc-300">模型与 LoRA</h3>
+            <h3 className="text-xs font-semibold text-zinc-300">{t("模型与 LoRA", "Models & LoRA")}</h3>
             <div className="p-3 rounded-xl bg-[#151925] border border-zinc-800/80 space-y-2.5 text-xs">
               {detail.loras.length > 0 && (
                 <div className="space-y-1.5">
@@ -475,13 +480,13 @@ export const AssetDetailDrawer: React.FC<Props> = ({
                         type="button"
                         onClick={() => onFilterLora(l.name)}
                         className="text-left truncate text-purple-200 hover:underline"
-                        title={`点击筛选使用此 LoRA 的所有资源: ${l.name}`}
+                        title={t(`点击筛选使用此 LoRA 的所有资源: ${l.name}`, `Click to filter all assets using this LoRA: ${l.name}`)}
                       >
                         {l.name.split("/").pop()}
                       </button>
                       <span className="font-mono text-[11px] text-zinc-300 shrink-0">
                         M:{l.strength_model} {l.strength_clip !== l.strength_model ? `/ C:${l.strength_clip}` : ""}
-                        {!l.enabled && " (关)"}
+                        {!l.enabled && t(" (关)", " (Off)")}
                       </span>
                     </div>
                   ))}
@@ -490,7 +495,7 @@ export const AssetDetailDrawer: React.FC<Props> = ({
 
               {detail.models.length > 0 && (
                 <div className="space-y-1">
-                  <div className="text-[11px] text-sky-300 font-medium">底模与其他模型 ({detail.models.length})</div>
+                  <div className="text-[11px] text-sky-300 font-medium">{t("底模与其他模型", "Checkpoints & Other Models")} ({detail.models.length})</div>
                   {detail.models.map((m, i) => (
                     <div key={`${m.node_id}-${m.name}-${i}`} className="flex items-center justify-between gap-2 text-[11px] py-0.5">
                       <span className="px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 uppercase text-[10px] shrink-0">
@@ -505,31 +510,31 @@ export const AssetDetailDrawer: React.FC<Props> = ({
               )}
 
               {detail.loras.length === 0 && detail.models.length === 0 && (
-                <div className="text-zinc-500 text-xs">未解析到模型或 LoRA 节点</div>
+                <div className="text-zinc-500 text-xs">{t("未解析到模型或 LoRA 节点", "No model or LoRA nodes parsed")}</div>
               )}
             </div>
           </section>
 
           {/* Sampling Params & Environment */}
           <section className="space-y-2">
-            <h3 className="text-xs font-semibold text-zinc-300">参数与运行环境</h3>
+            <h3 className="text-xs font-semibold text-zinc-300">{t("参数与运行环境", "Parameters & Environment")}</h3>
             <div className="grid grid-cols-2 gap-2 text-[11px]">
               {[
-                ["生成时间", formatTime(detail.created_at)],
-                ["ComfyUI 版本", detail.comfy_version || "历史文件(未记录)"],
-                ["工作流", detail.workflow_name || "-"],
-                ["分辨率", `${detail.width} × ${detail.height}`],
+                [t("生成时间", "Created"), formatTime(detail.created_at)],
+                [t("ComfyUI 版本", "ComfyUI Version"), detail.comfy_version || t("历史文件(未记录)", "Legacy (unrecorded)")],
+                [t("工作流", "Workflow"), detail.workflow_name || "-"],
+                [t("分辨率", "Resolution"), `${detail.width} × ${detail.height}`],
                 ["Seed", detail.params.seed ?? "-"],
                 ["Steps / CFG", `${detail.params.steps ?? "-"} / ${detail.params.cfg ?? detail.params.guidance ?? "-"}`],
                 ["Sampler", detail.params.sampler ?? "-"],
                 ["Scheduler", detail.params.scheduler ?? "-"],
-                ["文件体积", formatBytes(detail.file_size)],
+                [t("文件体积", "File Size"), formatBytes(detail.file_size)],
                 [
-                  "耗时 / 时长",
+                  t("耗时 / 时长", "Duration"),
                   detail.gen_duration_sec
-                    ? `生成 ${detail.gen_duration_sec}s`
+                    ? t(`生成 ${detail.gen_duration_sec}s`, `Gen ${detail.gen_duration_sec}s`)
                     : detail.duration
-                    ? `视频 ${detail.duration}s (${detail.fps || "-"}fps)`
+                    ? t(`视频 ${detail.duration}s (${detail.fps || "-"}fps)`, `Video ${detail.duration}s (${detail.fps || "-"}fps)`)
                     : "-",
                 ],
               ].map(([k, v]) => (
@@ -549,14 +554,14 @@ export const AssetDetailDrawer: React.FC<Props> = ({
               <div className="flex items-center justify-between">
                 <h3 className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
                   <Layers className="w-3.5 h-3.5 text-indigo-400" />
-                  同配方抽卡记录 ({detail.siblings.length} 张)
+                  {t(`同配方抽卡记录 (${detail.siblings.length} 张)`, `Same-Recipe Batch (${detail.siblings.length})`)}
                 </h3>
                 <button
                   type="button"
                   onClick={() => onFilterRecipe(detail.recipe_hash!)}
                   className="text-[11px] text-indigo-400 hover:underline"
                 >
-                  在瀑布流中查看全部
+                  {t("在瀑布流中查看全部", "View All in Gallery")}
                 </button>
               </div>
               <div className="p-2.5 rounded-xl bg-[#151925] border border-zinc-800/80 space-y-2">
@@ -585,7 +590,7 @@ export const AssetDetailDrawer: React.FC<Props> = ({
                     type="text"
                     value={recipeNote}
                     onChange={(e) => setRecipeNote(e.target.value)}
-                    placeholder="为整组配方写一句结论（如：0.75权重+Euler最稳）..."
+                    placeholder={t("为整组配方写一句结论（如：0.75权重+Euler最稳）...", "Write a note for this recipe group (e.g. 0.75 weight + Euler works best)...")}
                     className="flex-1 h-7 px-2 rounded bg-[#0d1018] border border-zinc-800 text-[11px] text-zinc-200 focus:outline-none focus:border-indigo-500"
                   />
                   <button
@@ -593,7 +598,7 @@ export const AssetDetailDrawer: React.FC<Props> = ({
                     onClick={handleSaveRecipeNote}
                     className="px-2.5 h-7 rounded bg-zinc-800 hover:bg-indigo-600 text-[11px] text-zinc-200"
                   >
-                    保存
+                    {t("保存", "Save")}
                   </button>
                 </div>
               </div>
@@ -605,12 +610,12 @@ export const AssetDetailDrawer: React.FC<Props> = ({
             <section className="space-y-2">
               <h3 className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
                 <GitBranch className="w-3.5 h-3.5 text-emerald-400" />
-                派生版本谱系
+                {t("派生版本谱系", "Derivation Lineage")}
               </h3>
               <div className="p-2.5 rounded-xl bg-[#151925] border border-zinc-800/80 space-y-2 text-[11px]">
                 {detail.ancestors.length > 0 && (
                   <div>
-                    <div className="text-zinc-500 mb-1">上游父版本</div>
+                    <div className="text-zinc-500 mb-1">{t("上游父版本", "Parent Ancestors")}</div>
                     <div className="flex items-center gap-1.5 overflow-x-auto">
                       {detail.ancestors.map((a) => (
                         <button
@@ -628,7 +633,7 @@ export const AssetDetailDrawer: React.FC<Props> = ({
                 )}
                 {detail.children.length > 0 && (
                   <div>
-                    <div className="text-zinc-500 mb-1">基于此图派生 ({detail.children.length})</div>
+                    <div className="text-zinc-500 mb-1">{t("基于此图派生", "Derived Children")} ({detail.children.length})</div>
                     <div className="flex items-center gap-1.5 overflow-x-auto">
                       {detail.children.map((c) => (
                         <button

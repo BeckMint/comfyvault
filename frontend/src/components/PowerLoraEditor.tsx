@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { ArrowDown, ArrowUp, Plus, Search, Sliders, Trash2, X } from "lucide-react";
+import { useI18n } from "../i18n";
 
 export interface RgthreeLoraEntry {
   on: boolean;
@@ -68,6 +69,7 @@ export const PowerLoraEditor: React.FC<Props> = ({
   autoRanges,
   onReplaceNodeInputs,
 }) => {
+  const { t } = useI18n();
   const [adding, setAdding] = useState(false);
   const [search, setSearch] = useState("");
   const [customRanges, setCustomRanges] = useState<Record<string, LoraRange>>(loadCustomRanges);
@@ -200,13 +202,16 @@ export const PowerLoraEditor: React.FC<Props> = ({
                     const v = e.target.value === "" ? 0 : Number(e.target.value);
                     if (!Number.isNaN(v)) updateAt(idx, { strength: v });
                   }}
-                  title="可直接输入任意权重数值"
+                  title={t("可直接输入任意权重数值", "Enter any weight value directly")}
                   className="w-14 h-6 px-1.5 rounded bg-[#141926] border border-zinc-700 focus:border-purple-500 focus:outline-none text-right font-mono text-[11px] text-purple-300"
                 />
                 <button
                   type="button"
                   onClick={() => openRangeEditor(item.lora, range)}
-                  title={`自定义此 LoRA 的滑块上下限（当前 ${range.min} ~ ${range.max}）`}
+                  title={t(
+                    `自定义此 LoRA 的滑块上下限（当前 ${range.min} ~ ${range.max}）`,
+                    `Customize slider range for this LoRA (current: ${range.min} ~ ${range.max})`
+                  )}
                   className={`px-1.5 h-6 rounded text-[10px] font-mono flex items-center gap-0.5 border transition-colors ${
                     isEditingRange
                       ? "bg-purple-600/30 border-purple-400 text-purple-200"
@@ -220,7 +225,7 @@ export const PowerLoraEditor: React.FC<Props> = ({
                   type="button"
                   disabled={idx === 0}
                   onClick={() => move(idx, -1)}
-                  title="上移"
+                  title={t("上移", "Move up")}
                   className="p-1 rounded hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100 disabled:opacity-25"
                 >
                   <ArrowUp className="w-3 h-3" />
@@ -229,7 +234,7 @@ export const PowerLoraEditor: React.FC<Props> = ({
                   type="button"
                   disabled={idx === loraList.length - 1}
                   onClick={() => move(idx, 1)}
-                  title="下移"
+                  title={t("下移", "Move down")}
                   className="p-1 rounded hover:bg-zinc-800 text-zinc-400 hover:text-zinc-100 disabled:opacity-25"
                 >
                   <ArrowDown className="w-3 h-3" />
@@ -237,7 +242,7 @@ export const PowerLoraEditor: React.FC<Props> = ({
                 <button
                   type="button"
                   onClick={() => removeAt(idx)}
-                  title="删除此 LoRA"
+                  title={t("删除此 LoRA", "Remove this LoRA")}
                   className="p-1 rounded hover:bg-rose-600/25 text-zinc-500 hover:text-rose-300"
                 >
                   <Trash2 className="w-3 h-3" />
@@ -247,7 +252,7 @@ export const PowerLoraEditor: React.FC<Props> = ({
 
             {isEditingRange && (
               <div className="flex items-center justify-end gap-1.5 pt-1 text-[11px]">
-                <span className="text-zinc-400">滑块范围：</span>
+                <span className="text-zinc-400">{t("滑块范围：", "Slider range:")}</span>
                 <input
                   type="number"
                   step="0.5"
@@ -268,7 +273,7 @@ export const PowerLoraEditor: React.FC<Props> = ({
                   onClick={() => saveRange(item.lora)}
                   className="px-2 h-6 rounded bg-purple-600 hover:bg-purple-500 text-white text-[11px]"
                 >
-                  保存范围
+                  {t("保存范围", "Save range")}
                 </button>
               </div>
             )}
@@ -295,7 +300,7 @@ export const PowerLoraEditor: React.FC<Props> = ({
           className="w-full py-1.5 rounded-lg border border-dashed border-purple-500/40 hover:border-purple-400 hover:bg-purple-600/15 text-xs text-purple-300 flex items-center justify-center gap-1.5 transition-colors"
         >
           <Plus className="w-3.5 h-3.5" />
-          添加 LoRA
+          {t("添加 LoRA", "Add LoRA")}
         </button>
       ) : (
         <div className="p-2.5 rounded-lg bg-[#0b0e16] border border-purple-500/50 space-y-2">
@@ -307,7 +312,7 @@ export const PowerLoraEditor: React.FC<Props> = ({
                 autoFocus
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="搜索本地 LoRA 文件名..."
+                placeholder={t("搜索本地 LoRA 文件名...", "Search local LoRA filenames...")}
                 className="w-full h-7 pl-8 pr-2 rounded bg-[#141824] border border-zinc-700 focus:border-purple-500 focus:outline-none text-xs text-zinc-100"
               />
             </div>
@@ -324,7 +329,9 @@ export const PowerLoraEditor: React.FC<Props> = ({
           </div>
           <div className="max-h-44 overflow-y-auto space-y-0.5">
             {filteredLoras.length === 0 ? (
-              <div className="text-[11px] text-zinc-500 py-3 text-center">未找到匹配的 LoRA 文件</div>
+              <div className="text-[11px] text-zinc-500 py-3 text-center">
+                {t("未找到匹配的 LoRA 文件", "No matching LoRA files found")}
+              </div>
             ) : (
               filteredLoras.map((name) => (
                 <button

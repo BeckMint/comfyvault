@@ -14,6 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { api } from "../api";
+import { useI18n } from "../i18n";
 import type { WorkflowFileItem } from "../types";
 
 export interface WorkflowPrefillPayload {
@@ -63,6 +64,7 @@ export const PromptConverterModal: React.FC<Props> = ({
   onSavedSnippet,
   onToast,
 }) => {
+  const { t } = useI18n();
   const [sourceText, setSourceText] = useState(initialSourceText);
   const [provider, setProvider] = useState<"gemini" | "chatgpt">(() => {
     try {
@@ -124,7 +126,7 @@ export const PromptConverterModal: React.FC<Props> = ({
           setSelectedWfPath(sorted[0].path);
         }
       })
-      .catch((e) => onToast(`加载工作流列表失败: ${e.message}`, "err"));
+      .catch((e) => onToast(t(`加载工作流列表失败: ${e.message}`, `Failed to load workflow list: ${e.message}`), "err"));
   }, []);
 
   useEffect(() => {
@@ -153,7 +155,7 @@ export const PromptConverterModal: React.FC<Props> = ({
         }
       })
       .catch((e) => {
-        if (active) onToast(`解析工作流主提示词失败: ${e.message}`, "err");
+        if (active) onToast(t(`解析工作流主提示词失败: ${e.message}`, `Failed to parse workflow primary prompt: ${e.message}`), "err");
       })
       .finally(() => {
         if (active) setInspecting(false);
@@ -177,20 +179,26 @@ export const PromptConverterModal: React.FC<Props> = ({
   const handleOpenLogin = async (target: "gemini" | "chatgpt") => {
     try {
       const res = await api.openPromptConverterLogin(target);
-      onToast(res.message || `已打开 ${target.toUpperCase()} 登录窗口，登录完成后关闭该窗口即可`);
+      onToast(
+        res.message ||
+          t(
+            `已打开 ${target.toUpperCase()} 登录窗口，登录完成后关闭该窗口即可`,
+            `Opened ${target.toUpperCase()} login window. Close the window after signing in.`
+          )
+      );
       setProfileInitialized(true);
     } catch (e: any) {
-      onToast(e.message || "打开登录浏览器失败", "err");
+      onToast(e.message || t("打开登录浏览器失败", "Failed to open login browser"), "err");
     }
   };
 
   const handleConvert = async (autoOpenWorkflow: boolean) => {
     if (!sourceText.trim()) {
-      onToast("请先输入需要转换的提示词或一句话想法", "err");
+      onToast(t("请先输入需要转换的提示词或一句话想法", "Please enter a prompt or a one-line idea to convert first"), "err");
       return;
     }
     if (!selectedWfPath) {
-      onToast("请先选择一个目标工作流", "err");
+      onToast(t("请先选择一个目标工作流", "Please select a target workflow first"), "err");
       return;
     }
     setConverting(true);
@@ -207,7 +215,12 @@ export const PromptConverterModal: React.FC<Props> = ({
       });
       setResult(res);
       if (autoOpenWorkflow) {
-        onToast(`已通过 ${provider.toUpperCase()} 完成转换并填入工作流！`);
+        onToast(
+          t(
+            `已通过 ${provider.toUpperCase()} 完成转换并填入工作流！`,
+            `Converted with ${provider.toUpperCase()} and filled into workflow!`
+          )
+        );
         onApplyToWorkflow({
           workflowPath: res.workflow_path,
           nodeId: res.target_node_id,
@@ -215,10 +228,10 @@ export const PromptConverterModal: React.FC<Props> = ({
           text: res.final_prompt,
         });
       } else {
-        onToast(`已通过 ${provider.toUpperCase()} 完成提示词转换`);
+        onToast(t(`已通过 ${provider.toUpperCase()} 完成提示词转换`, `Prompt converted with ${provider.toUpperCase()}`));
       }
     } catch (e: any) {
-      onToast(`转换失败: ${e.message}`, "err");
+      onToast(t(`转换失败: ${e.message}`, `Conversion failed: ${e.message}`), "err");
     } finally {
       setConverting(false);
     }
@@ -226,18 +239,21 @@ export const PromptConverterModal: React.FC<Props> = ({
 
   const handleSaveResultAsSnippet = async () => {
     if (!result) return;
-    const defaultTitle = `${result.model_family || "AI转换"} - ${sourceText.trim().slice(0, 18)}`;
+    const defaultTitle = `${result.model_family || t("AI转换", "AI Convert")} - ${sourceText.trim().slice(0, 18)}`;
     try {
       await api.createSnippet({
         title: defaultTitle,
-        category: result.has_divider ? "服装场景" : "正向",
+        category: result.has_divider ? t("服装场景", "Outfit & Scene") : t("正向", "Positive"),
         content: result.converted_part,
-        notes: `由 ${provider.toUpperCase()} 转换自：${sourceText.trim().slice(0, 80)}`,
+        notes: t(
+          `由 ${provider.toUpperCase()} 转换自：${sourceText.trim().slice(0, 80)}`,
+          `Converted by ${provider.toUpperCase()} from: ${sourceText.trim().slice(0, 80)}`
+        ),
       });
       onSavedSnippet?.();
-      onToast("已收藏到提示词库");
+      onToast(t("已收藏到提示词库", "Saved to Prompt Snippets"));
     } catch (e: any) {
-      onToast(`收藏失败: ${e.message}`, "err");
+      onToast(t(`收藏失败: ${e.message}`, `Save failed: ${e.message}`), "err");
     }
   };
 
@@ -249,9 +265,14 @@ export const PromptConverterModal: React.FC<Props> = ({
           <div className="flex items-center gap-2.5">
             <Wand2 className="w-5 h-5 text-amber-400" />
             <div>
-              <h2 className="text-sm font-semibold text-white">AI 提示词转换器（Gemini / ChatGPT 网页版会员）</h2>
+              <h2 className="text-sm font-semibold text-white">
+                {t("AI 提示词转换器（Gemini / ChatGPT 网页版会员）", "AI Prompt Converter (Gemini / ChatGPT Web)")}
+              </h2>
               <p className="text-[11px] text-zinc-400">
-                把任意资源提示词或一句话想法，按目标工作流模型自动转为段落化结构化提示词，并一键填回工作流创建弹窗
+                {t(
+                  "把任意资源提示词或一句话想法，按目标工作流模型自动转为段落化结构化提示词，并一键填回工作流创建弹窗",
+                  "Convert any asset prompt or one-line idea into a structured paragraph prompt tailored to your target workflow model and apply it with one click"
+                )}
               </p>
             </div>
           </div>
@@ -270,8 +291,10 @@ export const PromptConverterModal: React.FC<Props> = ({
           <div className="lg:col-span-4 border-r border-zinc-800 bg-[#0d1018] flex flex-col min-h-0">
             <div className="p-3 border-b border-zinc-800 space-y-2 shrink-0">
               <div className="text-xs font-semibold text-zinc-200 flex items-center justify-between">
-                <span>1. 选择目标工作流</span>
-                <span className="text-[10px] text-zinc-500 font-normal">共 {files.length} 个</span>
+                <span>{t("1. 选择目标工作流", "1. Select Target Workflow")}</span>
+                <span className="text-[10px] text-zinc-500 font-normal">
+                  {t(`共 ${files.length} 个`, `${files.length} total`)}
+                </span>
               </div>
               <div className="relative">
                 <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
@@ -279,7 +302,7 @@ export const PromptConverterModal: React.FC<Props> = ({
                   type="text"
                   value={wfSearch}
                   onChange={(e) => setWfSearch(e.target.value)}
-                  placeholder="搜索工作流名称..."
+                  placeholder={t("搜索工作流名称...", "Search workflow name...")}
                   className="w-full h-8 pl-8 pr-2 rounded-lg bg-[#141824] border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-indigo-500"
                 />
               </div>
@@ -312,7 +335,7 @@ export const PromptConverterModal: React.FC<Props> = ({
                         <div className="flex items-center gap-2 mt-1 text-[10px] text-zinc-500">
                           {pinned && (
                             <span className="text-amber-300 flex items-center gap-0.5">
-                              <Pin className="w-2.5 h-2.5 fill-amber-400" /> 置顶
+                              <Pin className="w-2.5 h-2.5 fill-amber-400" /> {t("置顶", "Pinned")}
                             </span>
                           )}
                           {f.folder && <span className="truncate">{f.folder}</span>}
@@ -331,7 +354,7 @@ export const PromptConverterModal: React.FC<Props> = ({
             <div className="p-3.5 rounded-xl bg-[#141926] border border-zinc-800 space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold text-zinc-200">2. 选择网页版 AI：</span>
+                  <span className="text-xs font-semibold text-zinc-200">{t("2. 选择网页版 AI：", "2. Select Web AI:")}</span>
                   <button
                     type="button"
                     onClick={() => setProvider("gemini")}
@@ -341,7 +364,7 @@ export const PromptConverterModal: React.FC<Props> = ({
                         : "bg-[#0d1018] border-zinc-700 text-zinc-300 hover:border-zinc-500"
                     }`}
                   >
-                    Gemini 网页版
+                    {t("Gemini 网页版", "Gemini Web")}
                   </button>
                   <button
                     type="button"
@@ -352,7 +375,7 @@ export const PromptConverterModal: React.FC<Props> = ({
                         : "bg-[#0d1018] border-zinc-700 text-zinc-300 hover:border-zinc-500"
                     }`}
                   >
-                    ChatGPT 网页版
+                    {t("ChatGPT 网页版", "ChatGPT Web")}
                   </button>
                 </div>
 
@@ -361,10 +384,15 @@ export const PromptConverterModal: React.FC<Props> = ({
                     type="button"
                     onClick={() => handleOpenLogin(provider)}
                     className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-[11px] text-amber-300 flex items-center gap-1"
-                    title="首次使用请点此打开独立浏览器完成一次手动登录，关闭浏览器后登录态将持久保存在本地缓存"
+                    title={t(
+                      "首次使用请点此打开独立浏览器完成一次手动登录，关闭浏览器后登录态将持久保存在本地缓存",
+                      "For first-time use, click to open a standalone browser and sign in manually once. Your login session will be saved locally after closing the browser."
+                    )}
                   >
                     <ExternalLink className="w-3 h-3" />
-                    {profileInitialized ? `检查/重新登录 ${provider.toUpperCase()}` : `首次登录 ${provider.toUpperCase()}`}
+                    {profileInitialized
+                      ? t(`检查/重新登录 ${provider.toUpperCase()}`, `Check / Re-login ${provider.toUpperCase()}`)
+                      : t(`首次登录 ${provider.toUpperCase()}`, `First-time Login ${provider.toUpperCase()}`)}
                   </button>
                 </div>
               </div>
@@ -372,13 +400,13 @@ export const PromptConverterModal: React.FC<Props> = ({
               {/* Workflow Inspection Banner */}
               <div className="flex flex-wrap items-center gap-2.5 pt-2 border-t border-zinc-800/80 text-xs">
                 <div className="flex items-center gap-1.5">
-                  <span className="text-zinc-400 text-[11px]">目标模型：</span>
+                  <span className="text-zinc-400 text-[11px]">{t("目标模型：", "Target Model:")}</span>
                   <select
                     value={modelFamily}
                     onChange={(e) => setModelFamily(e.target.value)}
                     className="h-7 px-2 rounded-md bg-[#0c0f17] border border-zinc-700 text-xs text-zinc-100"
                   >
-                    <option value="">自动 / 通用现代模型</option>
+                    <option value="">{t("自动 / 通用现代模型", "Auto / General Modern Model")}</option>
                     {MODEL_FAMILIES.filter(Boolean).map((mf) => (
                       <option key={mf} value={mf}>
                         {mf}
@@ -391,21 +419,21 @@ export const PromptConverterModal: React.FC<Props> = ({
                 </div>
 
                 <div className="flex items-center gap-1.5">
-                  <span className="text-zinc-400 text-[11px]">输出语言：</span>
+                  <span className="text-zinc-400 text-[11px]">{t("输出语言：", "Output Language:")}</span>
                   <select
                     value={langPref}
                     onChange={(e) => setLangPref(e.target.value as "auto" | "en" | "zh")}
                     className="h-7 px-2 rounded-md bg-[#0c0f17] border border-zinc-700 text-xs text-zinc-100"
                   >
-                    <option value="auto">自动适配模型</option>
+                    <option value="auto">{t("自动适配模型", "Auto-match model")}</option>
                     <option value="en">English</option>
-                    <option value="zh">简体中文</option>
+                    <option value="zh">{t("简体中文", "Simplified Chinese")}</option>
                   </select>
                 </div>
 
                 {promptNodes.length > 0 && (
                   <div className="flex items-center gap-1.5">
-                    <span className="text-zinc-400 text-[11px]">写入节点：</span>
+                    <span className="text-zinc-400 text-[11px]">{t("写入节点：", "Target Node:")}</span>
                     <select
                       value={selectedNodeKey}
                       onChange={(e) => setSelectedNodeKey(e.target.value)}
@@ -427,30 +455,40 @@ export const PromptConverterModal: React.FC<Props> = ({
                     onChange={(e) => setShowWindow(e.target.checked)}
                     className="accent-indigo-500"
                   />
-                  显示浏览器窗口
+                  {t("显示浏览器窗口", "Show browser window")}
                 </label>
               </div>
 
               {/* Divider Detection Status */}
               {inspecting ? (
                 <div className="text-[11px] text-zinc-400 flex items-center gap-1.5">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-400" /> 正在分析工作流主提示词结构...
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-400" />{" "}
+                  {t("正在分析工作流主提示词结构...", "Analyzing workflow primary prompt structure...")}
                 </div>
               ) : activeNode ? (
                 activeNode.has_divider ? (
                   <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/35 text-[11px] text-amber-200 space-y-1">
                     <div className="font-semibold flex items-center gap-1.5">
                       <Lock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                      已检测到固定人物模板（含 ------ 分隔线）
+                      {t("已检测到固定人物模板（含 ------ 分隔线）", "Fixed character template detected (contains ------ divider)")}
                     </div>
                     <div className="text-amber-200/80 leading-relaxed">
-                      将自动保留 <code className="px-1 rounded bg-black/30">------</code> 及其上方固定人物触发词，仅在下方生成<strong>不含人物五官、身材描述、画幅比例</strong>的内容，专注保留发型、服装、背景、构图、动作、神态姿势、光影色调与故事表现。
+                      {t("将自动保留 ", "Automatically preserves ")}
+                      <code className="px-1 rounded bg-black/30">------</code>
+                      {t(" 及其上方固定人物触发词，仅在下方生成", " and the fixed character trigger block above it, generating below only content ")}
+                      <strong>{t("不含人物五官、身材描述、画幅比例", "without facial features, body descriptions, or aspect ratio")}</strong>
+                      {t(
+                        "的内容，专注保留发型、服装、背景、构图、动作、神态姿势、光影色调与故事表现。",
+                        ", focusing on hairstyle, outfit, background, composition, action, expression/pose, lighting/color tone, and storytelling."
+                      )}
                     </div>
                   </div>
                 ) : (
                   <div className="p-2.5 rounded-lg bg-indigo-500/10 border border-indigo-500/30 text-[11px] text-indigo-200 flex items-center gap-1.5">
                     <CheckCircle2 className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-                    通用工作流模板：将生成完整、适配 <strong>{modelFamily || "目标模型"}</strong> 的段落化结构化提示词并整段填入。
+                    {t("通用工作流模板：将生成完整、适配 ", "General workflow template: generates a complete structured prompt tailored for ")}
+                    <strong>{modelFamily || t("目标模型", "the target model")}</strong>
+                    {t(" 的段落化结构化提示词并整段填入。", " and fills the entire field.")}
                   </div>
                 )
               ) : null}
@@ -459,13 +497,16 @@ export const PromptConverterModal: React.FC<Props> = ({
             {/* Source prompt input */}
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-zinc-200 block">
-                3. 输入任意原始提示词或一句话想法
+                {t("3. 输入任意原始提示词或一句话想法", "3. Enter any source prompt or one-line idea")}
               </label>
               <textarea
                 value={sourceText}
                 onChange={(e) => setSourceText(e.target.value)}
                 rows={6}
-                placeholder="粘贴任意资源提示词，或直接输入一句话（例如：雨夜东京便利店门口，撑着透明雨伞回头看镜头，霓虹灯反射在湿润的地面，电影感胶片色调）..."
+                placeholder={t(
+                  "粘贴任意资源提示词，或直接输入一句话（例如：雨夜东京便利店门口，撑着透明雨伞回头看镜头，霓虹灯反射在湿润的地面，电影感胶片色调）...",
+                  "Paste any asset prompt or type a short idea (e.g., standing outside a Tokyo convenience store on a rainy night, holding a clear umbrella looking back at the camera, neon reflections on wet pavement, cinematic film look)..."
+                )}
                 className="w-full p-3.5 rounded-xl bg-[#0c0f17] border border-zinc-800 text-[13px] text-zinc-100 leading-relaxed focus:outline-none focus:border-indigo-500 resize-y"
               />
             </div>
@@ -476,7 +517,11 @@ export const PromptConverterModal: React.FC<Props> = ({
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-xs font-semibold text-emerald-300 flex items-center gap-1.5">
                     <Sparkles className="w-3.5 h-3.5" />
-                    转换结果预览（{result.has_divider ? "已自动拼接在 ------ 下方" : "完整提示词"}）
+                    {t("转换结果预览（", "Conversion Result Preview (")}
+                    {result.has_divider
+                      ? t("已自动拼接在 ------ 下方", "auto-appended below ------")
+                      : t("完整提示词", "full prompt")}
+                    {t("）", ")")}
                   </span>
                   <div className="flex items-center gap-2">
                     <button
@@ -484,7 +529,7 @@ export const PromptConverterModal: React.FC<Props> = ({
                       onClick={handleSaveResultAsSnippet}
                       className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-[11px] text-amber-300 flex items-center gap-1"
                     >
-                      <BookmarkPlus className="w-3.5 h-3.5" /> 收藏到片段库
+                      <BookmarkPlus className="w-3.5 h-3.5" /> {t("收藏到片段库", "Save as Snippet")}
                     </button>
                     <button
                       type="button"
@@ -498,7 +543,7 @@ export const PromptConverterModal: React.FC<Props> = ({
                       }
                       className="px-3 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-[11px] font-semibold text-white flex items-center gap-1"
                     >
-                      填入工作流创建弹窗 <ArrowRight className="w-3.5 h-3.5" />
+                      {t("填入工作流创建弹窗", "Fill into Workflow Modal")} <ArrowRight className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 </div>
@@ -519,10 +564,16 @@ export const PromptConverterModal: React.FC<Props> = ({
             {converting ? (
               <span className="text-amber-300 flex items-center gap-1.5">
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                正在调用 {provider.toUpperCase()} 网页版生成结构化提示词（通常 10~30 秒）...
+                {t(
+                  `正在调用 ${provider.toUpperCase()} 网页版生成结构化提示词（通常 10~30 秒）...`,
+                  `Calling ${provider.toUpperCase()} Web to generate structured prompt (usually 10–30s)...`
+                )}
               </span>
             ) : (
-              "提示：首次使用请先点上方「首次登录」在独立浏览器中登录一次，之后即可最小化静默复用缓存"
+              t(
+                "提示：首次使用请先点上方「首次登录」在独立浏览器中登录一次，之后即可最小化静默复用缓存",
+                "Tip: For first-time use, click 'First-time Login' above to sign in once in the standalone browser; subsequent runs reuse the cached session silently."
+              )
             )}
           </div>
           <div className="flex items-center gap-2">
@@ -531,7 +582,7 @@ export const PromptConverterModal: React.FC<Props> = ({
               onClick={onClose}
               className="px-4 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs text-zinc-200"
             >
-              取消
+              {t("取消", "Cancel")}
             </button>
             <button
               type="button"
@@ -540,7 +591,7 @@ export const PromptConverterModal: React.FC<Props> = ({
               className="px-4 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 disabled:opacity-40 text-xs font-semibold text-zinc-100 flex items-center gap-1.5"
             >
               <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-              仅转换预览
+              {t("仅转换预览", "Convert & Preview")}
             </button>
             <button
               type="button"
@@ -549,7 +600,7 @@ export const PromptConverterModal: React.FC<Props> = ({
               className="px-5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-xs font-semibold text-white flex items-center gap-1.5"
             >
               {converting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
-              {converting ? "转换中..." : "转换并填入工作流"}
+              {converting ? t("转换中...", "Converting...") : t("转换并填入工作流", "Convert & Fill Workflow")}
             </button>
           </div>
         </div>

@@ -1,6 +1,7 @@
 import React, { useMemo } from "react";
 import { Film, FolderOpen, HardDrive, Image as ImageIcon, Info, Keyboard, Sparkles } from "lucide-react";
 import { formatBytes } from "../api";
+import { useI18n } from "../i18n";
 import type { AssetFilter, AssetListItem } from "../types";
 
 interface Props {
@@ -18,6 +19,7 @@ export const FolderSummaryPanel: React.FC<Props> = ({
   onFilterLora,
   onFilterModel,
 }) => {
+  const { t } = useI18n();
   const stats = useMemo(() => {
     let imgCount = 0;
     let vidCount = 0;
@@ -51,16 +53,16 @@ export const FolderSummaryPanel: React.FC<Props> = ({
 
   const scopeTitle =
     filter.showDeleted
-      ? "回收站"
+      ? t("回收站", "Trash")
       : filter.folder !== "__ALL__"
-      ? filter.folder || "output 根目录"
+      ? filter.folder || t("output 根目录", "output root")
       : filter.modelFamily
-      ? `模型: ${filter.modelFamily}`
+      ? `${t("模型", "Model")}: ${filter.modelFamily}`
       : filter.lora
       ? `LoRA: ${filter.lora.split("/").pop()}`
       : filter.recipeHash
-      ? `同配方抽卡组 #${filter.recipeHash.slice(0, 8)}`
-      : "全部资源";
+      ? `${t("同配方抽卡组", "Recipe Group")} #${filter.recipeHash.slice(0, 8)}`
+      : t("全部资源", "All Assets");
 
   return (
     <aside className="w-[460px] shrink-0 h-full bg-[#10131c] border-l border-zinc-800/90 flex flex-col overflow-hidden select-none">
@@ -71,7 +73,9 @@ export const FolderSummaryPanel: React.FC<Props> = ({
           <div className="text-xs font-semibold text-zinc-100 truncate" title={scopeTitle}>
             {scopeTitle}
           </div>
-          <div className="text-[10px] text-zinc-500">当前视图概览 · 点击任意缩略图查看详细参数</div>
+          <div className="text-[10px] text-zinc-500">
+            {t("当前视图概览 · 点击任意缩略图查看详细参数", "Overview · Click any thumbnail to inspect parameters")}
+          </div>
         </div>
       </div>
 
@@ -82,16 +86,18 @@ export const FolderSummaryPanel: React.FC<Props> = ({
           <div className="p-3 rounded-xl bg-[#151925] border border-zinc-800/80">
             <div className="text-[11px] text-zinc-500 flex items-center gap-1.5">
               <Info className="w-3.5 h-3.5 text-indigo-400" />
-              资源总数
+              {t("资源总数", "Total Assets")}
             </div>
             <div className="text-xl font-bold font-mono text-white mt-1">{total}</div>
-            <div className="text-[10px] text-zinc-500 mt-0.5">当前已加载 {items.length} 项</div>
+            <div className="text-[10px] text-zinc-500 mt-0.5">
+              {t(`当前已加载 ${items.length} 项`, `Loaded ${items.length} items`)}
+            </div>
           </div>
 
           <div className="p-3 rounded-xl bg-[#151925] border border-zinc-800/80">
             <div className="text-[11px] text-zinc-500 flex items-center gap-1.5">
               <HardDrive className="w-3.5 h-3.5 text-sky-400" />
-              已加载体积
+              {t("已加载体积", "Loaded Size")}
             </div>
             <div className="text-xl font-bold font-mono text-white mt-1">{formatBytes(stats.totalBytes)}</div>
             <div className="text-[10px] text-zinc-400 mt-0.5 flex items-center gap-2">
@@ -109,11 +115,11 @@ export const FolderSummaryPanel: React.FC<Props> = ({
         <section className="space-y-2">
           <h3 className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
             <Sparkles className="w-3.5 h-3.5 text-purple-400" />
-            当前常用 LoRA
+            {t("当前常用 LoRA", "Top LoRAs in View")}
           </h3>
           <div className="p-3 rounded-xl bg-[#151925] border border-zinc-800/80 space-y-1.5">
             {stats.topLoras.length === 0 ? (
-              <div className="text-xs text-zinc-500">当前目录下暂无 LoRA 记录</div>
+              <div className="text-xs text-zinc-500">{t("当前目录下暂无 LoRA 记录", "No LoRAs in current view")}</div>
             ) : (
               stats.topLoras.map(([name, cnt]) => (
                 <button
@@ -124,7 +130,7 @@ export const FolderSummaryPanel: React.FC<Props> = ({
                   title={name}
                 >
                   <span className="truncate text-purple-200">{name.split("/").pop()}</span>
-                  <span className="font-mono text-[11px] text-zinc-400 shrink-0">{cnt} 张</span>
+                  <span className="font-mono text-[11px] text-zinc-400 shrink-0">{cnt} {t("张", "items")}</span>
                 </button>
               ))
             )}
@@ -133,10 +139,10 @@ export const FolderSummaryPanel: React.FC<Props> = ({
 
         {/* Top Base Models in current folder/view */}
         <section className="space-y-2">
-          <h3 className="text-xs font-semibold text-zinc-300">当前常用底模 / UNET</h3>
+          <h3 className="text-xs font-semibold text-zinc-300">{t("当前常用底模 / UNET", "Top Models / UNETs")}</h3>
           <div className="p-3 rounded-xl bg-[#151925] border border-zinc-800/80 space-y-1.5">
             {stats.topModels.length === 0 ? (
-              <div className="text-xs text-zinc-500">当前目录下暂无底模记录</div>
+              <div className="text-xs text-zinc-500">{t("当前目录下暂无底模记录", "No models in current view")}</div>
             ) : (
               stats.topModels.map(([name, cnt]) => (
                 <button
@@ -147,7 +153,7 @@ export const FolderSummaryPanel: React.FC<Props> = ({
                   title={name}
                 >
                   <span className="truncate text-sky-200 font-mono text-[11px]">{name.split("/").pop()}</span>
-                  <span className="font-mono text-[11px] text-zinc-400 shrink-0">{cnt} 张</span>
+                  <span className="font-mono text-[11px] text-zinc-400 shrink-0">{cnt} {t("张", "items")}</span>
                 </button>
               ))
             )}
@@ -158,28 +164,28 @@ export const FolderSummaryPanel: React.FC<Props> = ({
         <section className="space-y-2">
           <h3 className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
             <Keyboard className="w-3.5 h-3.5 text-zinc-400" />
-            快捷操作指南
+            {t("快捷操作指南", "Shortcuts")}
           </h3>
           <div className="p-3 rounded-xl bg-[#151925] border border-zinc-800/80 space-y-1.5 text-[11px] text-zinc-400">
             <div className="flex justify-between">
-              <span>双击缩略图</span>
-              <span className="text-zinc-200">Picasa 硬件加速原图查看</span>
+              <span>{t("双击缩略图", "Double-click card")}</span>
+              <span className="text-zinc-200">{t("Picasa 硬件加速原图查看", "WebGL2 Lightbox Viewer")}</span>
             </div>
             <div className="flex justify-between">
-              <span>左键拖拽拉框</span>
-              <span className="text-zinc-200">框选多选 / A/B 对比</span>
+              <span>{t("左键拖拽拉框", "Left-drag marquee")}</span>
+              <span className="text-zinc-200">{t("框选多选 / A/B 对比", "Multi-select / A/B Compare")}</span>
             </div>
             <div className="flex justify-between">
-              <span>右键左侧文件夹</span>
-              <span className="text-zinc-200">打开 / 重命名 / 删除目录</span>
+              <span>{t("右键左侧文件夹", "Right-click folder")}</span>
+              <span className="text-zinc-200">{t("打开 / 重命名 / 删除目录", "Reveal / Rename / Delete")}</span>
             </div>
             <div className="flex justify-between">
-              <span>数字键 1 ~ 5 / P / X</span>
-              <span className="text-zinc-200">打星 / 精选 / 废片</span>
+              <span>{t("数字键 1 ~ 5 / P / X", "Keys 1–5 / P / X")}</span>
+              <span className="text-zinc-200">{t("打星 / 精选 / 废片", "Rate / Pick / Reject")}</span>
             </div>
             <div className="flex justify-between">
-              <span>方向键 ← / → / Esc</span>
-              <span className="text-zinc-200">切换选中 / 退出多选或关闭</span>
+              <span>{t("方向键 ← / → / Esc", "Arrows ← / → / Esc")}</span>
+              <span className="text-zinc-200">{t("切换选中 / 退出多选或关闭", "Navigate / Clear selection")}</span>
             </div>
           </div>
         </section>

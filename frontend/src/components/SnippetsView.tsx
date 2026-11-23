@@ -12,8 +12,21 @@ interface Props {
 
 const DEFAULT_CATS = ["正向", "人物外貌", "光影画质", "服装场景", "视频运镜", "负向", "精修", "通用"];
 
+const CAT_LABELS: Record<string, { zh: string; en: string }> = {
+  "全部": { zh: "全部", en: "All" },
+  "正向": { zh: "正向", en: "Positive" },
+  "人物外貌": { zh: "人物外貌", en: "Appearance" },
+  "光影画质": { zh: "光影画质", en: "Lighting & Quality" },
+  "服装场景": { zh: "服装场景", en: "Outfit & Scene" },
+  "视频运镜": { zh: "视频运镜", en: "Camera Motion" },
+  "负向": { zh: "负向", en: "Negative" },
+  "精修": { zh: "精修", en: "Refine" },
+  "通用": { zh: "通用", en: "General" },
+};
+
 export const SnippetsView: React.FC<Props> = ({ onToast, onApplyConvertedPrompt }) => {
   const { t } = useI18n();
+  const catLabel = (c: string) => (CAT_LABELS[c] ? t(CAT_LABELS[c].zh, CAT_LABELS[c].en) : c);
   const [items, setItems] = useState<SnippetItem[]>([]);
   const [search, setSearch] = useState("");
   const [catFilter, setCatFilter] = useState("全部");
@@ -59,10 +72,10 @@ export const SnippetsView: React.FC<Props> = ({ onToast, onApplyConvertedPrompt 
     try {
       if (editing) {
         await api.updateSnippet(editing.id, { title, category, content, notes });
-        onToast("提示词片段已更新");
+        onToast(t("提示词片段已更新", "Snippet updated"));
       } else {
         await api.createSnippet({ title, category, content, notes });
-        onToast("已添加到提示词片段库");
+        onToast(t("已添加到提示词片段库", "Added to Prompt Snippets"));
       }
       setCreating(false);
       load();
@@ -73,7 +86,7 @@ export const SnippetsView: React.FC<Props> = ({ onToast, onApplyConvertedPrompt 
 
   const handleDelete = async (id: number) => {
     await api.deleteSnippet(id);
-    onToast("已删除片段");
+    onToast(t("已删除片段", "Snippet deleted"));
     load();
   };
 
@@ -81,7 +94,7 @@ export const SnippetsView: React.FC<Props> = ({ onToast, onApplyConvertedPrompt 
     await navigator.clipboard.writeText(item.content);
     setCopiedId(item.id);
     setTimeout(() => setCopiedId(null), 1500);
-    onToast("已复制提示词片段");
+    onToast(t("已复制提示词片段", "Snippet copied"));
   };
 
   const categories = ["全部", ...Array.from(new Set([...DEFAULT_CATS, ...items.map((i) => i.category)]))];
@@ -156,7 +169,7 @@ export const SnippetsView: React.FC<Props> = ({ onToast, onApplyConvertedPrompt 
                   : "bg-[#141722] border-zinc-800 text-zinc-400 hover:text-zinc-200"
               }`}
             >
-              {c}
+              {catLabel(c)}
             </button>
           ))}
         </div>
@@ -164,7 +177,10 @@ export const SnippetsView: React.FC<Props> = ({ onToast, onApplyConvertedPrompt 
         {/* Grid */}
         {filtered.length === 0 ? (
           <div className="py-16 text-center text-zinc-500 text-sm">
-            暂无提示词片段，点击右上角“新建片段”或在图片详情页点击书签图标收藏
+            {t(
+              "暂无提示词片段，点击右上角“新建片段”或在图片详情页点击书签图标收藏",
+              "No prompt snippets yet. Click \"New Snippet\" above or click the bookmark icon in an asset's detail view."
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -177,7 +193,7 @@ export const SnippetsView: React.FC<Props> = ({ onToast, onApplyConvertedPrompt 
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2 min-w-0">
                       <span className="px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-300 border border-amber-500/30 text-[10px] shrink-0">
-                        {item.category}
+                        {catLabel(item.category)}
                       </span>
                       <span className="text-sm font-semibold text-zinc-100 truncate">{item.title}</span>
                     </div>
@@ -185,11 +201,11 @@ export const SnippetsView: React.FC<Props> = ({ onToast, onApplyConvertedPrompt 
                       <button
                         type="button"
                         onClick={() => setConverterSource(item.content)}
-                        title="用 Gemini / ChatGPT 转换此片段并填入工作流"
+                        title={t("用 Gemini / ChatGPT 转换此片段并填入工作流", "Convert this snippet with Gemini / ChatGPT and apply to workflow")}
                         className="px-2 py-1 rounded-md bg-amber-600/20 hover:bg-amber-600/35 border border-amber-500/30 text-[11px] text-amber-200 flex items-center gap-1"
                       >
                         <Wand2 className="w-3 h-3" />
-                        转换
+                        {t("转换", "Convert")}
                       </button>
                       <button
                         type="button"
@@ -197,7 +213,7 @@ export const SnippetsView: React.FC<Props> = ({ onToast, onApplyConvertedPrompt 
                         className="px-2 py-1 rounded-md bg-zinc-800 hover:bg-indigo-600 text-[11px] text-zinc-200 flex items-center gap-1"
                       >
                         {copiedId === item.id ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                        复制
+                        {t("复制", "Copy")}
                       </button>
                       <button
                         type="button"
@@ -218,7 +234,7 @@ export const SnippetsView: React.FC<Props> = ({ onToast, onApplyConvertedPrompt 
                   <pre className="p-3 rounded-xl bg-[#0c0f17] border border-zinc-800/80 text-xs text-zinc-200 whitespace-pre-wrap break-words font-sans max-h-40 overflow-y-auto select-text">
                     {item.content}
                   </pre>
-                  {item.notes && <div className="text-[11px] text-zinc-400">备注：{item.notes}</div>}
+                  {item.notes && <div className="text-[11px] text-zinc-400">{t("备注：", "Notes: ")}{item.notes}</div>}
                 </div>
               </div>
             ))}
@@ -248,7 +264,7 @@ export const SnippetsView: React.FC<Props> = ({ onToast, onApplyConvertedPrompt 
             className="w-full max-w-lg rounded-2xl bg-[#131722] border border-zinc-700 p-5 space-y-4"
           >
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-white">{editing ? "编辑提示词片段" : "新建提示词片段"}</h2>
+              <h2 className="text-sm font-semibold text-white">{editing ? t("编辑提示词片段", "Edit Prompt Snippet") : t("新建提示词片段", "New Prompt Snippet")}</h2>
               <button type="button" onClick={() => setCreating(false)} className="text-zinc-400 hover:text-white">
                 <X className="w-4 h-4" />
               </button>
@@ -258,7 +274,7 @@ export const SnippetsView: React.FC<Props> = ({ onToast, onApplyConvertedPrompt 
                 required
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="片段标题"
+                placeholder={t("片段标题", "Snippet title")}
                 className="col-span-2 h-9 px-3 rounded-lg bg-[#0b0e16] border border-zinc-700 text-xs text-zinc-100 focus:outline-none focus:border-indigo-500"
               />
               <select
@@ -268,7 +284,7 @@ export const SnippetsView: React.FC<Props> = ({ onToast, onApplyConvertedPrompt 
               >
                 {DEFAULT_CATS.map((c) => (
                   <option key={c} value={c}>
-                    {c}
+                    {catLabel(c)}
                   </option>
                 ))}
               </select>
@@ -278,13 +294,13 @@ export const SnippetsView: React.FC<Props> = ({ onToast, onApplyConvertedPrompt 
               rows={5}
               value={content}
               onChange={(e) => setContent(e.target.value)}
-              placeholder="输入提示词内容..."
+              placeholder={t("输入提示词内容...", "Enter prompt content...")}
               className="w-full p-3 rounded-lg bg-[#0b0e16] border border-zinc-700 text-xs text-zinc-100 focus:outline-none focus:border-indigo-500"
             />
             <input
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="使用说明或适用底模（可选）"
+              placeholder={t("使用说明或适用底模（可选）", "Usage notes or compatible base model (optional)")}
               className="w-full h-9 px-3 rounded-lg bg-[#0b0e16] border border-zinc-700 text-xs text-zinc-100 focus:outline-none focus:border-indigo-500"
             />
             <div className="flex justify-end gap-2">
@@ -293,10 +309,10 @@ export const SnippetsView: React.FC<Props> = ({ onToast, onApplyConvertedPrompt 
                 onClick={() => setCreating(false)}
                 className="px-4 py-1.5 rounded-lg bg-zinc-800 text-xs text-zinc-300"
               >
-                取消
+                {t("取消", "Cancel")}
               </button>
               <button type="submit" className="px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold text-white">
-                保存
+                {t("保存", "Save")}
               </button>
             </div>
           </form>

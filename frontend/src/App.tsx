@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { GitCompare, RotateCcw, Trash2, X } from "lucide-react";
 import { api } from "./api";
+import { useI18n } from "./i18n";
 import { AssetDetailDrawer } from "./components/AssetDetailDrawer";
 import { CompareModal } from "./components/CompareModal";
 import { FolderSummaryPanel } from "./components/FolderSummaryPanel";
@@ -48,6 +49,7 @@ const INITIAL_FILTER: AssetFilter = {
 const PAGE_SIZE = 250;
 
 export default function App() {
+  const { t } = useI18n();
   const [activeTab, setActiveTab] = useState<ActiveTab>("gallery");
   const [filter, setFilter] = useState<AssetFilter>(INITIAL_FILTER);
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -292,9 +294,13 @@ export default function App() {
         setItems((prev) => prev.map((x) => (x.id === asset.id ? { ...x, is_hidden: nextHidden } : x)));
       }
       loadFacets();
-      showToast(nextHidden ? "已隐藏资产（可点顶部眼睛图标反隐藏）" : "已取消隐藏");
+      showToast(
+        nextHidden
+          ? t("已隐藏资产（可点顶部眼睛图标反隐藏）", "Asset hidden (click top-bar eye icon to show hidden)")
+          : t("已取消隐藏", "Asset unhidden")
+      );
     },
-    [filter.showHidden, selectedId, loadFacets, showToast]
+    [filter.showHidden, selectedId, loadFacets, showToast, t]
   );
 
   const handleBatchTrash = async () => {
@@ -303,7 +309,7 @@ export default function App() {
     setCheckedIds(new Set());
     loadFacets();
     loadAssets(true);
-    showToast(`已将 ${checkedList.length} 项移入回收站`);
+    showToast(t(`已将 ${checkedList.length} 项移入回收站`, `Moved ${checkedList.length} items to Trash`));
   };
 
   const handleBatchRestore = async () => {
@@ -317,7 +323,15 @@ export default function App() {
 
   const handleBatchPurge = async () => {
     if (!checkedList.length) return;
-    if (!window.confirm(`确认将这 ${checkedList.length} 项从数据库移除并将文件移入 Windows 回收站吗？`)) return;
+    if (
+      !window.confirm(
+        t(
+          `确认将这 ${checkedList.length} 项从数据库移除并将文件移入 Windows 回收站吗？`,
+          `Remove ${checkedList.length} items from index and move files to Recycle Bin?`
+        )
+      )
+    )
+      return;
     const res = await api.purgeAssets(checkedList, true);
     setCheckedIds(new Set());
     if (selectedId && checkedIds.has(selectedId)) setSelectedId(null);
@@ -350,7 +364,7 @@ export default function App() {
         onOpenWorkflowCreate={() => setShowWorkflowCreate(true)}
         onOpenSettings={() => setShowSettings(true)}
         onControlComfy={async (action) => {
-          if (action === "stop" && !window.confirm("确认关闭正在运行的 ComfyUI 吗？")) return;
+          if (action === "stop" && !window.confirm(t("确认关闭正在运行的 ComfyUI 吗？", "Stop the running ComfyUI server?"))) return;
           try {
             const res = await api.controlComfy(action);
             showToast(res.message || "指令已发送");
@@ -386,10 +400,10 @@ export default function App() {
                 filter.recipeHash ||
                 filter.lora ||
                 filter.modelFamily ||
-                filter.baseModel) && <span className="text-zinc-500 whitespace-nowrap">当前筛选:</span>}
+                filter.baseModel) && <span className="text-zinc-500 whitespace-nowrap">{t("当前筛选:", "Active Filters:")}</span>}
               {filter.folder !== "__ALL__" && (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-500/15 text-amber-200 border border-amber-500/30 whitespace-nowrap">
-                  目录: {filter.folder || "根目录"}
+                  {t("目录", "Folder")}: {filter.folder || t("根目录", "root")}
                   <button type="button" onClick={() => handleFilterChange({ folder: "__ALL__", folderExact: false })}>
                     <X className="w-3 h-3" />
                   </button>
@@ -397,7 +411,7 @@ export default function App() {
               )}
               {filter.recipeHash && (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-200 border border-indigo-500/40 whitespace-nowrap">
-                  同配方抽卡组 #{filter.recipeHash.slice(0, 8)}
+                  {t("同配方抽卡组", "Recipe Group")} #{filter.recipeHash.slice(0, 8)}
                   <button type="button" onClick={() => handleFilterChange({ recipeHash: "" })}>
                     <X className="w-3 h-3" />
                   </button>
@@ -413,7 +427,7 @@ export default function App() {
               )}
               {filter.modelFamily && (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-200 border border-cyan-500/40 whitespace-nowrap">
-                  模型: {filter.modelFamily}
+                  {t("模型", "Model")}: {filter.modelFamily}
                   <button type="button" onClick={() => handleFilterChange({ modelFamily: "" })}>
                     <X className="w-3 h-3" />
                   </button>
@@ -421,7 +435,7 @@ export default function App() {
               )}
               {filter.baseModel && (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-sky-500/20 text-sky-200 border border-sky-500/40 whitespace-nowrap">
-                  底模: {filter.baseModel.split("/").pop()}
+                  {t("底模", "Checkpoint")}: {filter.baseModel.split("/").pop()}
                   <button type="button" onClick={() => handleFilterChange({ baseModel: "" })}>
                     <X className="w-3 h-3" />
                   </button>
@@ -431,14 +445,16 @@ export default function App() {
 
             {checkedList.length > 0 && (
               <div className="ml-auto flex items-center gap-1.5 bg-emerald-950/50 border border-emerald-500/30 rounded-lg px-2.5 py-1 shrink-0">
-                <span className="text-xs text-emerald-300 font-medium whitespace-nowrap">多选 {checkedList.length}</span>
+                <span className="text-xs text-emerald-300 font-medium whitespace-nowrap">
+                  {t(`多选 ${checkedList.length}`, `${checkedList.length} selected`)}
+                </span>
                 <button
                   type="button"
                   onClick={() => setCheckedIds(new Set(items.map((x) => x.id)))}
                   className="px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs whitespace-nowrap"
-                  title="全选当前已加载的全部资源"
+                  title={t("全选当前已加载的全部资源", "Select all loaded assets")}
                 >
-                  全选
+                  {t("全选", "Select All")}
                 </button>
                 {checkedList.length === 2 && (
                   <button
@@ -447,7 +463,7 @@ export default function App() {
                     className="px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium flex items-center gap-1 whitespace-nowrap"
                   >
                     <GitCompare className="w-3.5 h-3.5 shrink-0" />
-                    A/B 对比 Diff
+                    {t("A/B 对比 Diff", "A/B Compare")}
                   </button>
                 )}
                 {filter.showDeleted ? (
@@ -458,7 +474,7 @@ export default function App() {
                       className="px-2 py-0.5 rounded bg-zinc-700 hover:bg-zinc-600 text-zinc-100 text-xs flex items-center gap-1 whitespace-nowrap"
                     >
                       <RotateCcw className="w-3 h-3 shrink-0" />
-                      恢复
+                      {t("恢复", "Restore")}
                     </button>
                     <button
                       type="button"
@@ -466,7 +482,7 @@ export default function App() {
                       className="px-2 py-0.5 rounded bg-rose-600 hover:bg-rose-500 text-white text-xs flex items-center gap-1 whitespace-nowrap"
                     >
                       <Trash2 className="w-3 h-3 shrink-0" />
-                      彻底清理磁盘
+                      {t("彻底清理磁盘", "Purge from Disk")}
                     </button>
                   </>
                 ) : (
@@ -476,14 +492,14 @@ export default function App() {
                     className="px-2 py-0.5 rounded bg-rose-600/80 hover:bg-rose-500 text-white text-xs flex items-center gap-1 whitespace-nowrap"
                   >
                     <Trash2 className="w-3 h-3 shrink-0" />
-                    移入回收站
+                    {t("移入回收站", "Move to Trash")}
                   </button>
                 )}
                 <button
                   type="button"
                   onClick={() => setCheckedIds(new Set())}
                   className="text-zinc-400 hover:text-white p-0.5 shrink-0"
-                  title="取消选择 (Esc)"
+                  title={t("取消选择 (Esc)", "Clear selection (Esc)")}
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -524,7 +540,14 @@ export default function App() {
                 }
               }}
               onFolderDelete={async (folder, count) => {
-                if (!window.confirm(`确认删除文件夹 "${folder}"（包含 ${count} 项资源）吗？\n\n文件将安全移入 Windows 回收站。`)) {
+                if (
+                  !window.confirm(
+                    t(
+                      `确认删除文件夹 "${folder}"（包含 ${count} 项资源）吗？\n\n文件将安全移入 Windows 回收站。`,
+                      `Delete folder "${folder}" (${count} assets)?\n\nFiles will be safely moved to Recycle Bin.`
+                    )
+                  )
+                ) {
                   return;
                 }
                 try {

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Maximize2, Minimize2, X, ZoomIn, ZoomOut } from "lucide-react";
+import { useI18n } from "../i18n";
 import type { AssetListItem } from "../types";
 
 interface Props {
@@ -148,6 +149,7 @@ function initWebGL2(canvas: HTMLCanvasElement): GLRenderer | null {
 }
 
 export const LightboxModal: React.FC<Props> = ({ items, currentIndex, onChangeIndex, onClose }) => {
+  const { t } = useI18n();
   const item = items[currentIndex];
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -617,7 +619,7 @@ export const LightboxModal: React.FC<Props> = ({ items, currentIndex, onChangeIn
             <div className="flex items-center gap-1 px-1.5 py-1 rounded-xl bg-black/80 border border-white/10">
               <button
                 type="button"
-                title="缩小"
+                title={t("缩小", "Zoom Out")}
                 onClick={() => {
                   const st = stRef.current;
                   const ns = Math.max(Math.min(st.fitScale * 0.5, 0.1), st.targetScale / 1.35);
@@ -630,7 +632,7 @@ export const LightboxModal: React.FC<Props> = ({ items, currentIndex, onChangeIn
               </button>
               <button
                 type="button"
-                title={isZoomedUI ? "适应窗口 (双击图片)" : "放大到 100% (双击图片)"}
+                title={isZoomedUI ? t("适应窗口 (双击图片)", "Fit to Window (Double-click)") : t("放大到 100% (双击图片)", "Zoom to 100% (Double-click)")}
                 onClick={() => {
                   if (isZoomedUI) animateToFit();
                   else zoomAtPoint(window.innerWidth / 2, window.innerHeight / 2, 1.0);
@@ -638,11 +640,11 @@ export const LightboxModal: React.FC<Props> = ({ items, currentIndex, onChangeIn
                 className="px-2 py-1 rounded-lg hover:bg-white/10 text-xs font-mono text-zinc-200 flex items-center gap-1"
               >
                 {isZoomedUI ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
-                {isZoomedUI ? "适应" : "100%"}
+                {isZoomedUI ? t("适应", "Fit") : "100%"}
               </button>
               <button
                 type="button"
-                title="放大 (最大 400%)"
+                title={t("放大 (最大 400%)", "Zoom In (max 400%)")}
                 onClick={() => {
                   const st = stRef.current;
                   const ns = Math.min(4.0, st.targetScale * 1.35);
@@ -658,7 +660,7 @@ export const LightboxModal: React.FC<Props> = ({ items, currentIndex, onChangeIn
           <button
             type="button"
             onClick={onClose}
-            title="关闭 (Esc)"
+            title={t("关闭 (Esc)", "Close (Esc)")}
             className="p-2 rounded-xl bg-black/80 hover:bg-rose-600/80 border border-white/15 text-zinc-200 hover:text-white transition-colors"
           >
             <X className="w-5 h-5" />
@@ -671,7 +673,7 @@ export const LightboxModal: React.FC<Props> = ({ items, currentIndex, onChangeIn
         <button
           type="button"
           onClick={() => onChangeIndex(currentIndex - 1)}
-          title="上一张 (←)"
+          title={t("上一张 (←)", "Previous (←)")}
           className="fixed left-4 top-1/2 -translate-y-1/2 z-20 p-2.5 rounded-full bg-black/70 hover:bg-black/90 border border-white/15 text-zinc-200 hover:text-white transition-colors"
         >
           <ChevronLeft className="w-6 h-6" />
@@ -681,7 +683,7 @@ export const LightboxModal: React.FC<Props> = ({ items, currentIndex, onChangeIn
         <button
           type="button"
           onClick={() => onChangeIndex(currentIndex + 1)}
-          title="下一张 (→)"
+          title={t("下一张 (→)", "Next (→)")}
           className="fixed right-4 top-1/2 -translate-y-1/2 z-20 p-2.5 rounded-full bg-black/70 hover:bg-black/90 border border-white/15 text-zinc-200 hover:text-white transition-colors"
         >
           <ChevronRight className="w-6 h-6" />
@@ -710,7 +712,7 @@ export const LightboxModal: React.FC<Props> = ({ items, currentIndex, onChangeIn
           {loadingImg && (
             <div className="fixed inset-0 flex items-center justify-center pointer-events-none">
               <div className="px-4 py-2 rounded-xl bg-black/80 border border-white/10 text-xs text-zinc-300">
-                加载原图纹理中...
+                {t("加载原图纹理中...", "Loading full-resolution texture...")}
               </div>
             </div>
           )}
@@ -720,7 +722,10 @@ export const LightboxModal: React.FC<Props> = ({ items, currentIndex, onChangeIn
       {/* Bottom hint */}
       {item.media_type === "image" && (
         <div className="fixed bottom-3 left-1/2 -translate-x-1/2 z-20 px-3 py-1 rounded-full bg-black/75 border border-white/10 text-[11px] text-zinc-400 pointer-events-none">
-          WebGL2 硬件加速 · 滚轮无级缩放 (最高 400%) · 双击任意点 100% / 适应 · 左键拖动 · ←/→ 切图 · Esc 关闭
+          {t(
+            "WebGL2 硬件加速 · 滚轮无级缩放 (最高 400%) · 双击任意点 100% / 适应 · 左键拖动 · ←/→ 切图 · Esc 关闭",
+            "WebGL2 GPU Accelerated · Wheel Smooth Zoom (up to 400%) · Double-click 100% / Fit · Drag to Pan · ←/→ Navigate · Esc Close"
+          )}
         </div>
       )}
     </div>

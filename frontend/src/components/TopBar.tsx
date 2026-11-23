@@ -241,10 +241,10 @@ export const TopBar: React.FC<Props> = ({
         {thumbStatus.running && thumbStatus.total > 0 && (
           <span
             className="h-8 px-2.5 rounded-lg bg-indigo-950/50 border border-indigo-500/30 text-[11px] text-indigo-300 flex items-center gap-1.5 font-mono whitespace-nowrap"
-            title="后台低并发预生成 WebP 缩略图，生成后永久缓存"
+            title={t("后台低并发预生成 WebP 缩略图，生成后永久缓存", "Pre-generating cached WebP thumbnails in background")}
           >
             <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
-            缩略图 {thumbStatus.done}/{thumbStatus.total}
+            {t("缩略图", "Thumbs")} {thumbStatus.done}/{thumbStatus.total}
           </span>
         )}
 
@@ -256,7 +256,7 @@ export const TopBar: React.FC<Props> = ({
               target="_blank"
               rel="noreferrer"
               className="h-8 px-2.5 rounded-lg border text-xs font-medium flex items-center gap-2 transition-colors bg-emerald-950/40 border-emerald-500/40 text-emerald-300 hover:bg-emerald-950/70 whitespace-nowrap"
-              title={`ComfyUI 正在工作 | 版本: ${comfyStatus.comfy_version}`}
+              title={t(`ComfyUI 正在工作 | 版本: ${comfyStatus.comfy_version}`, `ComfyUI Busy | Version: ${comfyStatus.comfy_version}`)}
             >
               <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399] animate-pulse" />
               <span>

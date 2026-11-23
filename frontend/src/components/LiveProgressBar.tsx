@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Loader2, Square } from "lucide-react";
+import { useI18n } from "../i18n";
 import type { ComfyStatus } from "../types";
 
 interface Props {
@@ -8,6 +9,7 @@ interface Props {
 }
 
 export const LiveProgressBar: React.FC<Props> = ({ status, onInterrupt }) => {
+  const { t } = useI18n();
   const isBusy =
     status.online &&
     (Boolean(status.executing_prompt_id) || Boolean(status.executing_node) || status.queue_remaining > 0);
@@ -34,11 +36,11 @@ export const LiveProgressBar: React.FC<Props> = ({ status, onInterrupt }) => {
     <div className="shrink-0 bg-[#121728] border-b border-indigo-500/40 px-4 py-2 flex items-center gap-4 select-none">
       <div className="flex items-center gap-2 shrink-0">
         <Loader2 className="w-4 h-4 text-indigo-400 animate-spin" />
-        <span className="text-xs font-semibold text-indigo-200">ComfyUI 正在生成</span>
+        <span className="text-xs font-semibold text-indigo-200">{t("ComfyUI 正在生成", "ComfyUI Generating")}</span>
       </div>
 
       <div className="text-xs text-zinc-200 truncate max-w-[280px]" title={status.executing_node_title || ""}>
-        {status.executing_node_title || (status.executing_node ? `节点 #${status.executing_node}` : "排队等待执行...")}
+        {status.executing_node_title || (status.executing_node ? `${t("节点", "Node")} #${status.executing_node}` : t("排队等待执行...", "Queued..."))}
       </div>
 
       {/* Progress Track */}
@@ -59,12 +61,12 @@ export const LiveProgressBar: React.FC<Props> = ({ status, onInterrupt }) => {
             {status.progress_value}/{status.progress_max} ({pct}%)
           </span>
         ) : (
-          <span className="text-zinc-400">处理中...</span>
+          <span className="text-zinc-400">{t("处理中...", "Processing...")}</span>
         )}
         {elapsed > 0 && <span className="text-zinc-400">{elapsed}s</span>}
         {status.queue_remaining > 0 && (
           <span className="px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-200 border border-indigo-500/30">
-            队列 {status.queue_remaining}
+            {t("队列", "Queue")} {status.queue_remaining}
           </span>
         )}
       </div>
@@ -72,11 +74,11 @@ export const LiveProgressBar: React.FC<Props> = ({ status, onInterrupt }) => {
       <button
         type="button"
         onClick={onInterrupt}
-        title="立即中断 ComfyUI 当前生成任务"
+        title={t("立即中断 ComfyUI 当前生成任务", "Interrupt current ComfyUI execution")}
         className="px-2.5 py-1 rounded-md bg-rose-600/25 hover:bg-rose-600/50 border border-rose-500/40 text-rose-200 text-[11px] font-medium flex items-center gap-1 shrink-0 transition-colors"
       >
         <Square className="w-3 h-3 fill-current" />
-        中断
+        {t("中断", "Stop")}
       </button>
     </div>
   );

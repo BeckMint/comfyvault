@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Columns2, GitCompare, SlidersHorizontal, X } from "lucide-react";
 import { api, formatTime } from "../api";
+import { useI18n } from "../i18n";
 import type { AssetDetail } from "../types";
 import { diffPromptText } from "../utils/diff";
 
@@ -10,6 +11,7 @@ interface Props {
 }
 
 export const CompareModal: React.FC<Props> = ({ assetIds, onClose }) => {
+  const { t } = useI18n();
   const [a, setA] = useState<AssetDetail | null>(null);
   const [b, setB] = useState<AssetDetail | null>(null);
   const [mode, setMode] = useState<"side" | "slider">("side");
@@ -37,20 +39,20 @@ export const CompareModal: React.FC<Props> = ({ assetIds, onClose }) => {
     return allNames.map((name) => {
       const la = mapA.get(name);
       const lb = mapB.get(name);
-      const valA = la ? (la.enabled ? `${la.strength_model}` : "关闭") : "未使用";
-      const valB = lb ? (lb.enabled ? `${lb.strength_model}` : "关闭") : "未使用";
+      const valA = la ? (la.enabled ? `${la.strength_model}` : t("关闭", "Off")) : t("未使用", "Unused");
+      const valB = lb ? (lb.enabled ? `${lb.strength_model}` : t("关闭", "Off")) : t("未使用", "Unused");
       return { name, valA, valB, changed: valA !== valB };
     });
-  }, [a, b]);
+  }, [a, b, t]);
 
   const paramRows = useMemo(() => {
     if (!a || !b) return [];
     const rows: Array<[string, string, string]> = [
-      ["生成时间", formatTime(a.created_at), formatTime(b.created_at)],
-      ["底模", a.base_model?.split("/").pop() || "-", b.base_model?.split("/").pop() || "-"],
-      ["工作流", a.workflow_name || "-", b.workflow_name || "-"],
-      ["ComfyUI 版本", a.comfy_version || "-", b.comfy_version || "-"],
-      ["分辨率", `${a.width}×${a.height}`, `${b.width}×${b.height}`],
+      [t("生成时间", "Created"), formatTime(a.created_at), formatTime(b.created_at)],
+      [t("底模", "Base Model"), a.base_model?.split("/").pop() || "-", b.base_model?.split("/").pop() || "-"],
+      [t("工作流", "Workflow"), a.workflow_name || "-", b.workflow_name || "-"],
+      [t("ComfyUI 版本", "ComfyUI Version"), a.comfy_version || "-", b.comfy_version || "-"],
+      [t("分辨率", "Resolution"), `${a.width}×${a.height}`, `${b.width}×${b.height}`],
       ["Seed", String(a.params.seed ?? "-"), String(b.params.seed ?? "-")],
       ["Steps", String(a.params.steps ?? "-"), String(b.params.steps ?? "-")],
       ["CFG / Guidance", String(a.params.cfg ?? a.params.guidance ?? "-"), String(b.params.cfg ?? b.params.guidance ?? "-")],
@@ -58,12 +60,12 @@ export const CompareModal: React.FC<Props> = ({ assetIds, onClose }) => {
       ["Scheduler", String(a.params.scheduler ?? "-"), String(b.params.scheduler ?? "-")],
     ];
     return rows;
-  }, [a, b]);
+  }, [a, b, t]);
 
   if (!a || !b) {
     return (
       <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center text-zinc-300 text-sm">
-        正在加载 A/B 对比数据...
+        {t("正在加载 A/B 对比数据...", "Loading A/B comparison data...")}
       </div>
     );
   }
@@ -75,7 +77,7 @@ export const CompareModal: React.FC<Props> = ({ assetIds, onClose }) => {
         <div className="px-5 py-3 border-b border-zinc-800 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <GitCompare className="w-4 h-4 text-indigo-400" />
-            <span className="text-sm font-semibold text-white">A/B 视觉对比 & 参数/提示词 Diff</span>
+            <span className="text-sm font-semibold text-white">{t("A/B 视觉对比 & 参数/提示词 Diff", "A/B Visual Compare & Params/Prompt Diff")}</span>
           </div>
           <div className="flex items-center gap-2">
             {a.media_type === "image" && b.media_type === "image" && (
@@ -87,7 +89,7 @@ export const CompareModal: React.FC<Props> = ({ assetIds, onClose }) => {
                     mode === "side" ? "bg-indigo-600 text-white" : "text-zinc-400"
                   }`}
                 >
-                  <Columns2 className="w-3.5 h-3.5" /> 并排对比
+                  <Columns2 className="w-3.5 h-3.5" /> {t("并排对比", "Side by Side")}
                 </button>
                 <button
                   type="button"
@@ -96,7 +98,7 @@ export const CompareModal: React.FC<Props> = ({ assetIds, onClose }) => {
                     mode === "slider" ? "bg-indigo-600 text-white" : "text-zinc-400"
                   }`}
                 >
-                  <SlidersHorizontal className="w-3.5 h-3.5" /> 卷帘滑块
+                  <SlidersHorizontal className="w-3.5 h-3.5" /> {t("卷帘滑块", "Split Slider")}
                 </button>
               </div>
             )}
@@ -112,8 +114,8 @@ export const CompareModal: React.FC<Props> = ({ assetIds, onClose }) => {
           {mode === "side" ? (
             <div className="grid grid-cols-2 gap-4">
               {[
-                { label: "A (基准)", item: a, badge: "bg-rose-500/20 text-rose-300 border-rose-500/40" },
-                { label: "B (对照)", item: b, badge: "bg-emerald-500/20 text-emerald-300 border-emerald-500/40" },
+                { label: t("A (基准)", "A (Base)"), item: a, badge: "bg-rose-500/20 text-rose-300 border-rose-500/40" },
+                { label: t("B (对照)", "B (Compare)"), item: b, badge: "bg-emerald-500/20 text-emerald-300 border-emerald-500/40" },
               ].map(({ label, item, badge }) => (
                 <div key={item.id} className="rounded-xl bg-[#090b10] border border-zinc-800 overflow-hidden flex flex-col">
                   <div className="px-3 py-1.5 bg-[#151926] border-b border-zinc-800 flex items-center justify-between text-xs">
@@ -165,10 +167,10 @@ export const CompareModal: React.FC<Props> = ({ assetIds, onClose }) => {
           {/* Prompt Diff */}
           <div className="rounded-xl bg-[#141824] border border-zinc-800 overflow-hidden">
             <div className="px-4 py-2 bg-[#191e2d] border-b border-zinc-800 flex items-center justify-between text-xs">
-              <span className="font-semibold text-zinc-200">提示词差异高亮 (A → B)</span>
+              <span className="font-semibold text-zinc-200">{t("提示词差异高亮 (A → B)", "Prompt Diff Highlight (A → B)")}</span>
               <div className="flex items-center gap-3 text-[11px]">
-                <span className="text-rose-300 bg-rose-500/20 px-1.5 py-0.5 rounded line-through">A 中有 / B 删除</span>
-                <span className="text-emerald-300 bg-emerald-500/20 px-1.5 py-0.5 rounded">B 中新增</span>
+                <span className="text-rose-300 bg-rose-500/20 px-1.5 py-0.5 rounded line-through">{t("A 中有 / B 删除", "Removed in B")}</span>
+                <span className="text-emerald-300 bg-emerald-500/20 px-1.5 py-0.5 rounded">{t("B 中新增", "Added in B")}</span>
               </div>
             </div>
             <div className="p-4 text-xs leading-relaxed whitespace-pre-wrap break-words font-sans max-h-56 overflow-y-auto">
@@ -200,7 +202,7 @@ export const CompareModal: React.FC<Props> = ({ assetIds, onClose }) => {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div className="rounded-xl bg-[#141824] border border-zinc-800 overflow-hidden">
               <div className="px-4 py-2 bg-[#191e2d] border-b border-zinc-800 text-xs font-semibold text-purple-300">
-                LoRA 权重对比
+                {t("LoRA 权重对比", "LoRA Weight Comparison")}
               </div>
               <table className="w-full text-xs">
                 <thead>
@@ -214,7 +216,7 @@ export const CompareModal: React.FC<Props> = ({ assetIds, onClose }) => {
                   {loraDiffRows.length === 0 ? (
                     <tr>
                       <td colSpan={3} className="py-4 text-center text-zinc-500">
-                        两者均未挂载 LoRA
+                        {t("两者均未挂载 LoRA", "Neither asset uses any LoRA")}
                       </td>
                     </tr>
                   ) : (
@@ -237,12 +239,12 @@ export const CompareModal: React.FC<Props> = ({ assetIds, onClose }) => {
 
             <div className="rounded-xl bg-[#141824] border border-zinc-800 overflow-hidden">
               <div className="px-4 py-2 bg-[#191e2d] border-b border-zinc-800 text-xs font-semibold text-sky-300">
-                核心参数对比
+                {t("核心参数对比", "Core Parameters Comparison")}
               </div>
               <table className="w-full text-xs">
                 <thead>
                   <tr className="text-zinc-500 border-b border-zinc-800 text-left">
-                    <th className="py-2 px-3">参数项</th>
+                    <th className="py-2 px-3">{t("参数项", "Parameter")}</th>
                     <th className="py-2 px-3">A</th>
                     <th className="py-2 px-3">B</th>
                   </tr>

@@ -15,6 +15,7 @@ import {
   X,
 } from "lucide-react";
 import { api, formatTime } from "../api";
+import { useI18n } from "../i18n";
 import type { ComfyStatus, SnippetItem, WorkflowFileItem } from "../types";
 import { PowerLoraEditor } from "./PowerLoraEditor";
 import type { WorkflowPrefillPayload } from "./PromptConverterModal";
@@ -82,6 +83,7 @@ export const WorkflowCreateModal: React.FC<Props> = ({
   onSubmitted,
   onError,
 }) => {
+  const { t } = useI18n();
   const [workflowDirs, setWorkflowDirs] = useState<string[]>([]);
   const [files, setFiles] = useState<WorkflowFileItem[]>([]);
   const [loadingList, setLoadingList] = useState(true);
@@ -174,7 +176,7 @@ export const WorkflowCreateModal: React.FC<Props> = ({
           selectFile((firstPinned || list[0]).path);
         }
       })
-      .catch((e) => onError(`扫描工作流目录失败: ${e.message}`))
+      .catch((e) => onError(t(`扫描工作流目录失败: ${e.message}`, `Failed to scan workflow directory: ${e.message}`)))
       .finally(() => setLoadingList(false));
   };
 
@@ -219,7 +221,12 @@ export const WorkflowCreateModal: React.FC<Props> = ({
           }
         }
         if (applied) {
-          onSubmitted(`已自动填入转换后的提示词${prefill.nodeId ? `（节点 #${prefill.nodeId}）` : ""}，请检阅后点击创建`);
+          onSubmitted(
+            t(
+              `已自动填入转换后的提示词${prefill.nodeId ? `（节点 #${prefill.nodeId}）` : ""}，请检阅后点击创建`,
+              `Auto-filled converted prompt${prefill.nodeId ? ` (Node #${prefill.nodeId})` : ""}. Please review and click Generate.`
+            )
+          );
         }
       }
       setPromptJson(nextPrompt);
@@ -227,7 +234,7 @@ export const WorkflowCreateModal: React.FC<Props> = ({
       setUiTitles(res.ui_titles || {});
       setFieldOptions(res.field_options || {});
     } catch (e: any) {
-      onError(`解析工作流失败: ${e.message}`);
+      onError(t(`解析工作流失败: ${e.message}`, `Failed to parse workflow: ${e.message}`));
     } finally {
       setLoadingWf(false);
     }
@@ -268,7 +275,7 @@ export const WorkflowCreateModal: React.FC<Props> = ({
 
   const handleUploadImageForNode = async (nid: string, key: string, file: File) => {
     if (!comfyStatus.online) {
-      onError("ComfyUI 离线，无法上传参考图");
+      onError(t("ComfyUI 离线，无法上传参考图", "ComfyUI is offline; cannot upload reference image"));
       return;
     }
     try {
@@ -277,15 +284,15 @@ export const WorkflowCreateModal: React.FC<Props> = ({
       const uploadedName = res.subfolder ? `${res.subfolder}/${res.name}` : res.name;
       updateInput(nid, key, uploadedName);
       setUploadedPreviews((prev) => ({ ...prev, [`${nid}::${key}`]: localUrl }));
-      onSubmitted(`已上传参考图至 ComfyUI: ${uploadedName}`);
+      onSubmitted(t(`已上传参考图至 ComfyUI: ${uploadedName}`, `Uploaded reference image to ComfyUI: ${uploadedName}`));
     } catch (e: any) {
-      onError(`上传失败: ${e.message}`);
+      onError(t(`上传失败: ${e.message}`, `Upload failed: ${e.message}`));
     }
   };
 
   const insertSnippet = (content: string) => {
     if (!focusedField || !promptJson) {
-      onError("请先点击一个提示词输入框");
+      onError(t("请先点击一个提示词输入框", "Please click a prompt input box first"));
       return;
     }
     const cur = String(promptJson[focusedField.nid]?.inputs?.[focusedField.key] ?? "");
@@ -342,9 +349,14 @@ export const WorkflowCreateModal: React.FC<Props> = ({
       setFiles((prev) =>
         prev.map((f) => (f.path === selectedPath ? { ...f, mtime: res.mtime } : f))
       );
-      onSubmitted(`已保存修改到工作流文件（更新 ${res.updated_nodes} 个节点）`);
+      onSubmitted(
+        t(
+          `已保存修改到工作流文件（更新 ${res.updated_nodes} 个节点）`,
+          `Saved changes to workflow file (${res.updated_nodes} node(s) updated)`
+        )
+      );
     } catch (e: any) {
-      onError(`保存失败: ${e.message}`);
+      onError(t(`保存失败: ${e.message}`, `Save failed: ${e.message}`));
     } finally {
       setSaving(false);
     }
@@ -352,7 +364,7 @@ export const WorkflowCreateModal: React.FC<Props> = ({
 
   const handleSubmit = async () => {
     if (!comfyStatus.online) {
-      onError("ComfyUI 当前未连接，请先启动 ComfyUI");
+      onError(t("ComfyUI 当前未连接，请先启动 ComfyUI", "ComfyUI is not connected. Please start ComfyUI first."));
       return;
     }
     if (!promptJson) return;
@@ -364,10 +376,15 @@ export const WorkflowCreateModal: React.FC<Props> = ({
         randomize_seed: randomizeSeed,
         batch_count: batchCount,
       });
-      onSubmitted(`工作流已提交 ${res.prompt_ids.length} 个生成任务到 ComfyUI！`);
+      onSubmitted(
+        t(
+          `工作流已提交 ${res.prompt_ids.length} 个生成任务到 ComfyUI！`,
+          `Submitted ${res.prompt_ids.length} workflow generation task(s) to ComfyUI!`
+        )
+      );
       onClose();
     } catch (e: any) {
-      onError(`提交失败: ${e.message}`);
+      onError(t(`提交失败: ${e.message}`, `Submit failed: ${e.message}`));
     } finally {
       setSubmitting(false);
     }
@@ -381,9 +398,13 @@ export const WorkflowCreateModal: React.FC<Props> = ({
           <div className="flex items-center gap-2.5">
             <Workflow className="w-5 h-5 text-indigo-400" />
             <div>
-              <h2 className="text-sm font-semibold text-white">从工作流目录创建生成</h2>
+              <h2 className="text-sm font-semibold text-white">
+                {t("从工作流目录创建生成", "Create from Workflow Directory")}
+              </h2>
               <p className="text-[11px] text-zinc-400 truncate max-w-[60vw]">
-                当前扫描目录：{workflowDirs.length > 0 ? workflowDirs.join(" ; ") : "未配置"}（共 {files.length} 个工作流）
+                {t("当前扫描目录：", "Scanned directories: ")}
+                {workflowDirs.length > 0 ? workflowDirs.join(" ; ") : t("未配置", "Not configured")}
+                {t(`（共 ${files.length} 个工作流）`, ` (${files.length} workflow(s))`)}
               </p>
             </div>
           </div>
@@ -394,7 +415,7 @@ export const WorkflowCreateModal: React.FC<Props> = ({
               className="px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-xs text-zinc-200 flex items-center gap-1.5"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${loadingList ? "animate-spin text-indigo-400" : ""}`} />
-              重新扫描
+              {t("重新扫描", "Rescan")}
             </button>
             <button
               type="button"
@@ -402,7 +423,7 @@ export const WorkflowCreateModal: React.FC<Props> = ({
               className="px-3 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/35 border border-indigo-500/40 text-xs text-indigo-200 flex items-center gap-1.5"
             >
               <Settings className="w-3.5 h-3.5" />
-              配置工作流目录
+              {t("配置工作流目录", "Configure Workflow Dirs")}
             </button>
             <button
               type="button"
@@ -425,7 +446,7 @@ export const WorkflowCreateModal: React.FC<Props> = ({
                   type="text"
                   value={fileSearch}
                   onChange={(e) => setFileSearch(e.target.value)}
-                  placeholder="搜索工作流文件名或子目录..."
+                  placeholder={t("搜索工作流文件名或子目录...", "Search workflow filename or subfolder...")}
                   className="w-full h-8 pl-8 pr-2 rounded-lg bg-[#141824] border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-indigo-500"
                 />
               </div>
@@ -433,16 +454,18 @@ export const WorkflowCreateModal: React.FC<Props> = ({
 
             <div className="flex-1 overflow-y-auto p-2 space-y-1">
               {loadingList ? (
-                <div className="text-center py-8 text-xs text-zinc-500">正在扫描工作流目录...</div>
+                <div className="text-center py-8 text-xs text-zinc-500">
+                  {t("正在扫描工作流目录...", "Scanning workflow directories...")}
+                </div>
               ) : filteredFiles.length === 0 ? (
                 <div className="text-center py-8 px-4 text-xs text-zinc-500 space-y-2">
-                  <div>未找到工作流 JSON 文件</div>
+                  <div>{t("未找到工作流 JSON 文件", "No workflow JSON files found")}</div>
                   <button
                     type="button"
                     onClick={onOpenSettings}
                     className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs"
                   >
-                    配置工作流目录
+                    {t("配置工作流目录", "Configure Workflow Dirs")}
                   </button>
                 </div>
               ) : (
@@ -479,7 +502,7 @@ export const WorkflowCreateModal: React.FC<Props> = ({
                             <button
                               type="button"
                               onClick={(e) => togglePin(e, f.path)}
-                              title={pinned ? "取消置顶" : "置顶常用工作流"}
+                              title={pinned ? t("取消置顶", "Unpin") : t("置顶常用工作流", "Pin favorite workflow")}
                               className={`p-1 rounded-md shrink-0 transition-all ${
                                 pinned
                                   ? "text-amber-400 bg-amber-500/15 hover:bg-amber-500/25 opacity-100"
@@ -491,7 +514,9 @@ export const WorkflowCreateModal: React.FC<Props> = ({
                           </div>
                           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1 text-[10px] text-zinc-500">
                             {pinned && (
-                              <span className="px-1 rounded bg-amber-500/20 text-amber-300 font-medium">置顶</span>
+                              <span className="px-1 rounded bg-amber-500/20 text-amber-300 font-medium">
+                                {t("置顶", "Pinned")}
+                              </span>
                             )}
                             {f.folder && (
                               <span className="inline-flex items-center gap-0.5 text-amber-400/80 truncate max-w-[130px]">
@@ -499,7 +524,7 @@ export const WorkflowCreateModal: React.FC<Props> = ({
                               </span>
                             )}
                             <span className="px-1 rounded bg-zinc-800 text-zinc-400 uppercase">{f.format}</span>
-                            <span className="font-mono">{f.node_count} 节点</span>
+                            <span className="font-mono">{t(`${f.node_count} 节点`, `${f.node_count} nodes`)}</span>
                             <span className="font-mono text-zinc-400">{formatTime(f.mtime)}</span>
                           </div>
                         </div>
@@ -515,9 +540,11 @@ export const WorkflowCreateModal: React.FC<Props> = ({
           <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
             <div className="px-5 py-2.5 border-b border-zinc-800 bg-[#131723] flex flex-wrap items-center justify-between gap-3 shrink-0">
               <div className="flex items-center gap-2 min-w-0">
-                <span className="text-xs font-semibold text-white truncate">{activeName || "请选择左侧工作流"}</span>
+                <span className="text-xs font-semibold text-white truncate">
+                  {activeName || t("请选择左侧工作流", "Select a workflow on the left")}
+                </span>
                 <span className="px-2 py-0.5 rounded-full bg-zinc-800 text-[11px] text-zinc-300 font-mono shrink-0">
-                  {editableNodes.length} 个可输入节点
+                  {t(`${editableNodes.length} 个可输入节点`, `${editableNodes.length} editable nodes`)}
                 </span>
               </div>
               <div className="flex items-center gap-2">
@@ -527,7 +554,7 @@ export const WorkflowCreateModal: React.FC<Props> = ({
                     type="text"
                     value={nodeFilter}
                     onChange={(e) => setNodeFilter(e.target.value)}
-                    placeholder="过滤节点编号/标题/参数..."
+                    placeholder={t("过滤节点编号/标题/参数...", "Filter node ID / title / param...")}
                     className="w-full h-7 pl-8 pr-2 rounded-lg bg-[#0c0f17] border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-indigo-500"
                   />
                 </div>
@@ -537,7 +564,7 @@ export const WorkflowCreateModal: React.FC<Props> = ({
                   className="h-7 px-2.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-[11px] text-amber-300 flex items-center gap-1"
                 >
                   <BookMarked className="w-3.5 h-3.5" />
-                  {showSnippets ? "收起词库" : "提示词库"}
+                  {showSnippets ? t("收起词库", "Hide Snippets") : t("提示词库", "Snippets")}
                 </button>
               </div>
             </div>
@@ -545,7 +572,7 @@ export const WorkflowCreateModal: React.FC<Props> = ({
             {showSnippets && (
               <div className="px-5 py-2 bg-[#0b0e16] border-b border-amber-500/30 max-h-32 overflow-y-auto flex flex-wrap gap-1.5 shrink-0">
                 {snippets.length === 0 ? (
-                  <span className="text-[11px] text-zinc-500">提示词库为空</span>
+                  <span className="text-[11px] text-zinc-500">{t("提示词库为空", "Snippet library is empty")}</span>
                 ) : (
                   snippets.map((sn) => (
                     <button
@@ -564,9 +591,13 @@ export const WorkflowCreateModal: React.FC<Props> = ({
 
             <div className="flex-1 overflow-y-auto p-5 space-y-4">
               {loadingWf ? (
-                <div className="py-20 text-center text-sm text-zinc-500">正在解析工作流节点与 ComfyUI 参数定义...</div>
+                <div className="py-20 text-center text-sm text-zinc-500">
+                  {t("正在解析工作流节点与 ComfyUI 参数定义...", "Parsing workflow nodes and ComfyUI parameter definitions...")}
+                </div>
               ) : !promptJson ? (
-                <div className="py-20 text-center text-sm text-zinc-500">请从左侧选择一个工作流文件</div>
+                <div className="py-20 text-center text-sm text-zinc-500">
+                  {t("请从左侧选择一个工作流文件", "Please select a workflow file from the left")}
+                </div>
               ) : (
                 editableNodes.map((node) => {
                   const isLoadImage = node.class_type.toLowerCase().includes("loadimage");
@@ -587,7 +618,7 @@ export const WorkflowCreateModal: React.FC<Props> = ({
                           <span className="text-xs font-semibold text-zinc-100 truncate">{node.title}</span>
                           {isPinned && (
                             <span className="px-1.5 py-0.5 rounded bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[10px] shrink-0">
-                              已置顶
+                              {t("已置顶", "Pinned")}
                             </span>
                           )}
                         </div>
@@ -596,7 +627,7 @@ export const WorkflowCreateModal: React.FC<Props> = ({
                           <button
                             type="button"
                             onClick={() => togglePinNode(node.nid)}
-                            title={isPinned ? "取消置顶该节点" : "置顶该节点"}
+                            title={isPinned ? t("取消置顶该节点", "Unpin this node") : t("置顶该节点", "Pin this node")}
                             className={`p-1 rounded-md transition-colors ${
                               isPinned
                                 ? "text-amber-400 bg-amber-500/15 hover:bg-amber-500/25"
@@ -696,7 +727,9 @@ export const WorkflowCreateModal: React.FC<Props> = ({
                                 <div className="flex items-center justify-between text-[11px]">
                                   <span className="text-zinc-400 font-mono">{key}</span>
                                   {isSeed && randomizeSeed && (
-                                    <span className="text-[10px] text-indigo-400">提交时自动随机</span>
+                                    <span className="text-[10px] text-indigo-400">
+                                      {t("提交时自动随机", "Auto-randomized on submit")}
+                                    </span>
                                   )}
                                 </div>
                                 <input
@@ -721,7 +754,9 @@ export const WorkflowCreateModal: React.FC<Props> = ({
                               (strVal ? `/api/comfy/input-image?name=${encodeURIComponent(strVal)}` : "");
                             return (
                               <div key={key} className="md:col-span-2 space-y-2">
-                                <span className="text-[11px] text-zinc-400 font-mono">{key} (输入图片)</span>
+                                <span className="text-[11px] text-zinc-400 font-mono">
+                                  {key} ({t("输入图片", "Input Image")})
+                                </span>
                                 <div className="flex items-start gap-3">
                                   {previewSrc && (
                                     <div className="w-24 h-24 rounded-lg overflow-hidden bg-[#0a0c12] border border-zinc-700/80 shrink-0 flex items-center justify-center">
@@ -752,7 +787,7 @@ export const WorkflowCreateModal: React.FC<Props> = ({
                                     />
                                     <label className="h-8 px-3 rounded-lg bg-sky-600/25 hover:bg-sky-600/40 border border-sky-500/40 text-sky-200 text-xs flex items-center gap-1.5 cursor-pointer shrink-0">
                                       <ImagePlus className="w-3.5 h-3.5" />
-                                      上传图片
+                                      {t("上传图片", "Upload Image")}
                                       <input
                                         type="file"
                                         accept="image/*"
@@ -844,10 +879,10 @@ export const WorkflowCreateModal: React.FC<Props> = ({
                 className="accent-indigo-500"
               />
               <Shuffle className="w-3.5 h-3.5 text-indigo-400" />
-              自动随机化所有 Seed
+              {t("自动随机化所有 Seed", "Randomize all Seeds")}
             </label>
             <div className="flex items-center gap-1.5">
-              <span className="text-zinc-400">生成张数</span>
+              <span className="text-zinc-400">{t("生成张数", "Batch Count")}</span>
               {[1, 2, 4].map((n) => (
                 <button
                   key={n}
@@ -865,24 +900,27 @@ export const WorkflowCreateModal: React.FC<Props> = ({
 
           <div className="flex items-center gap-2">
             <span className={`text-xs mr-2 ${comfyStatus.online ? "text-emerald-400" : "text-rose-400"}`}>
-              {comfyStatus.online ? "● ComfyUI 在线" : "● ComfyUI 离线"}
+              {comfyStatus.online ? t("● ComfyUI 在线", "● ComfyUI Online") : t("● ComfyUI 离线", "● ComfyUI Offline")}
             </span>
             <button
               type="button"
               onClick={onClose}
               className="px-4 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs text-zinc-200"
             >
-              取消
+              {t("取消", "Cancel")}
             </button>
             <button
               type="button"
               disabled={!selectedPath || !promptJson || saving}
               onClick={handleSaveToWorkflow}
-              title="将当前修改的提示词与参数直接保存回工作流文件（不关闭弹窗）"
+              title={t(
+                "将当前修改的提示词与参数直接保存回工作流文件（不关闭弹窗）",
+                "Save current prompt and parameter edits directly back to the workflow file (keeps modal open)"
+              )}
               className="px-4 py-1.5 rounded-lg bg-emerald-600/25 hover:bg-emerald-600/40 border border-emerald-500/40 disabled:opacity-40 text-xs font-semibold text-emerald-200 flex items-center gap-1.5 transition-colors"
             >
               <Save className="w-3.5 h-3.5" />
-              {saving ? "保存中..." : "保存"}
+              {saving ? t("保存中...", "Saving...") : t("保存", "Save")}
             </button>
             <button
               type="button"
@@ -891,7 +929,7 @@ export const WorkflowCreateModal: React.FC<Props> = ({
               className="px-5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-xs font-semibold text-white flex items-center gap-1.5"
             >
               <Play className="w-3.5 h-3.5 fill-current" />
-              {submitting ? "正在提交..." : `提交生成 (×${batchCount})`}
+              {submitting ? t("正在提交...", "Submitting...") : t(`提交生成 (×${batchCount})`, `Generate (×${batchCount})`)}
             </button>
           </div>
         </div>

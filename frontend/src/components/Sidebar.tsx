@@ -176,10 +176,10 @@ export const Sidebar: React.FC<Props> = ({
           e.stopPropagation();
           onClear();
         }}
-        title="点击清除此项筛选"
+        title={t("点击清除此项筛选", "Click to clear filter")}
         className="ml-1 inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded-full bg-indigo-600 text-white text-[10px] font-medium normal-case tracking-normal hover:bg-rose-500 transition-colors shrink-0"
       >
-        已选 {count}
+        {t(`已选 ${count}`, `${count} on`)}
         <X className="w-2.5 h-2.5" />
       </span>
     ) : null;
@@ -384,7 +384,7 @@ export const Sidebar: React.FC<Props> = ({
                   type="button"
                   onClick={() => onFilterChange({ folder: "__ALL__", folderExact: false })}
                   className="text-indigo-200 hover:text-rose-400 shrink-0"
-                  title="取消目录筛选"
+                  title={t("取消目录筛选", "Clear folder filter")}
                 >
                   <X className="w-3 h-3" />
                 </button>
@@ -400,7 +400,7 @@ export const Sidebar: React.FC<Props> = ({
                 }`}
               >
                 <Folder className="w-3.5 h-3.5 text-zinc-400" />
-                <span className="flex-1 truncate">output 根目录</span>
+                <span className="flex-1 truncate">{t("output 根目录", "output root")}</span>
                 <span className="text-[10px] text-zinc-500 font-mono">{rootDirectCount}</span>
               </div>
             )}
@@ -418,7 +418,7 @@ export const Sidebar: React.FC<Props> = ({
         >
           <span className="flex items-center gap-1.5 min-w-0">
             <Cpu className="w-3 h-3 text-cyan-400 shrink-0" />
-            <span className="truncate">模型 ({facets?.model_families?.length || 0})</span>
+            <span className="truncate">{t("模型", "Models")} ({facets?.model_families?.length || 0})</span>
             {selectedBadge(filter.modelFamily ? 1 : 0, () => onFilterChange({ modelFamily: "" }))}
           </span>
           {openSections.families ? <ChevronDown className="w-3.5 h-3.5 shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 shrink-0" />}
@@ -454,7 +454,7 @@ export const Sidebar: React.FC<Props> = ({
         >
           <span className="flex items-center gap-1.5 min-w-0">
             <Sparkles className="w-3 h-3 text-purple-400 shrink-0" />
-            <span className="truncate">LoRA 筛选 ({facets?.loras.length || 0})</span>
+            <span className="truncate">{t("LoRA 筛选", "LoRAs")} ({facets?.loras.length || 0})</span>
             {selectedBadge(filter.lora ? 1 : 0, () => onFilterChange({ lora: "" }))}
           </span>
           {openSections.loras ? <ChevronDown className="w-3.5 h-3.5 shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 shrink-0" />}
@@ -480,7 +480,7 @@ export const Sidebar: React.FC<Props> = ({
               );
             })}
             {facets && facets.loras.length === 0 && (
-              <div className="text-[11px] text-zinc-500 px-2 py-1">暂未检测到 LoRA</div>
+              <div className="text-[11px] text-zinc-500 px-2 py-1">{t("暂未检测到 LoRA", "No LoRAs detected")}</div>
             )}
           </div>
         )}
@@ -495,7 +495,7 @@ export const Sidebar: React.FC<Props> = ({
         >
           <span className="flex items-center gap-1.5 min-w-0">
             <Cpu className="w-3 h-3 text-sky-400 shrink-0" />
-            <span className="truncate">底模 / UNET ({facets?.models.length || 0})</span>
+            <span className="truncate">{t("底模 / UNET", "Checkpoints / UNET")} ({facets?.models.length || 0})</span>
             {selectedBadge(filter.baseModel ? 1 : 0, () => onFilterChange({ baseModel: "" }))}
           </span>
           {openSections.models ? <ChevronDown className="w-3.5 h-3.5 shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 shrink-0" />}
@@ -533,7 +533,7 @@ export const Sidebar: React.FC<Props> = ({
         >
           <span className="flex items-center gap-1.5 min-w-0">
             <Layers className="w-3 h-3 text-emerald-400 shrink-0" />
-            <span className="truncate">工作流指纹 ({facets?.workflows.length || 0})</span>
+            <span className="truncate">{t("工作流指纹", "Workflows")} ({facets?.workflows.length || 0})</span>
             {selectedBadge(filter.workflowHash ? 1 : 0, () => onFilterChange({ workflowHash: "" }))}
           </span>
           {openSections.workflows ? <ChevronDown className="w-3.5 h-3.5 shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 shrink-0" />}
@@ -572,7 +572,7 @@ export const Sidebar: React.FC<Props> = ({
           >
             <span className="flex items-center gap-1.5 min-w-0">
               <GitBranch className="w-3 h-3 text-amber-400 shrink-0" />
-              <span className="truncate">ComfyUI 版本</span>
+              <span className="truncate">{t("ComfyUI 版本", "ComfyUI Versions")}</span>
               {selectedBadge(filter.comfyVersion ? 1 : 0, () => onFilterChange({ comfyVersion: "" }))}
             </span>
             {openSections.versions ? <ChevronDown className="w-3.5 h-3.5 shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 shrink-0" />}
@@ -609,7 +609,7 @@ export const Sidebar: React.FC<Props> = ({
         >
           <span className="flex items-center gap-1.5 min-w-0">
             <Tag className="w-3 h-3 text-pink-400 shrink-0" />
-            <span className="truncate">自定义标签 ({facets?.tags.length || 0})</span>
+            <span className="truncate">{t("自定义标签", "Tags")} ({facets?.tags.length || 0})</span>
             {selectedBadge(filter.tagId !== null ? 1 : 0, () => onFilterChange({ tagId: null }))}
           </span>
           {openSections.tags ? <ChevronDown className="w-3.5 h-3.5 shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 shrink-0" />}
@@ -636,7 +636,7 @@ export const Sidebar: React.FC<Props> = ({
               );
             })}
             {facets && facets.tags.length === 0 && (
-              <span className="text-[11px] text-zinc-500 px-1">在右侧详情页添加标签</span>
+              <span className="text-[11px] text-zinc-500 px-1">{t("在右侧详情页添加标签", "Add tags in right detail panel")}</span>
             )}
           </div>
         )}
@@ -662,7 +662,7 @@ export const Sidebar: React.FC<Props> = ({
             className="w-full px-3 py-1.5 hover:bg-zinc-800 flex items-center gap-2 text-left"
           >
             <FolderSearch className="w-3.5 h-3.5 text-amber-400" />
-            在资源管理器中打开
+            {t("在资源管理器中打开", "Reveal in Explorer")}
           </button>
           <button
             type="button"
@@ -674,7 +674,7 @@ export const Sidebar: React.FC<Props> = ({
             className="w-full px-3 py-1.5 hover:bg-zinc-800 flex items-center gap-2 text-left"
           >
             <Edit3 className="w-3.5 h-3.5 text-sky-400" />
-            重命名文件夹
+            {t("重命名文件夹", "Rename Folder")}
           </button>
           <button
             type="button"
@@ -685,7 +685,7 @@ export const Sidebar: React.FC<Props> = ({
             className="w-full px-3 py-1.5 hover:bg-zinc-800 flex items-center gap-2 text-left"
           >
             <RefreshCw className="w-3.5 h-3.5 text-indigo-400" />
-            重新扫描目录
+            {t("重新扫描目录", "Rescan Directory")}
           </button>
           <div className="my-1 border-t border-zinc-800" />
           <button
@@ -698,7 +698,7 @@ export const Sidebar: React.FC<Props> = ({
             className="w-full px-3 py-1.5 hover:bg-rose-600/25 text-rose-300 flex items-center gap-2 text-left"
           >
             <Trash2 className="w-3.5 h-3.5" />
-            删除文件夹（移入回收站）
+            {t("删除文件夹（移入回收站）", "Delete Folder (Recycle Bin)")}
           </button>
         </div>
       )}

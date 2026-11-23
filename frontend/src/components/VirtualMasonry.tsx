@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, Eye, EyeOff, Film, Layers, Star, ThumbsDown, ThumbsUp } from "lucide-react";
+import { useI18n } from "../i18n";
 import type { AssetListItem } from "../types";
 
 interface Props {
@@ -58,6 +59,7 @@ const AssetCard = React.memo(function AssetCard({
   onQuickHide: (a: AssetListItem) => void;
   onFilterRecipe: (hash: string) => void;
 }) {
+  const { t } = useI18n();
   const { item, x, y, w, h } = placed;
   const mediaH = h - FOOTER_H;
   const [hoverVideo, setHoverVideo] = useState(false);
@@ -145,7 +147,10 @@ const AssetCard = React.memo(function AssetCard({
           {item.recipe_hash && item.recipe_count > 1 && (
             <button
               type="button"
-              title={`相同参数/提示词共生成 ${item.recipe_count} 张，点击筛选该配方`}
+              title={t(
+                `相同参数/提示词共生成 ${item.recipe_count} 张，点击筛选该配方`,
+                `${item.recipe_count} generations share these params/prompt — click to filter`
+              )}
               onClick={(e) => {
                 e.stopPropagation();
                 if (item.recipe_hash) onFilterRecipe(item.recipe_hash);
@@ -156,17 +161,21 @@ const AssetCard = React.memo(function AssetCard({
             </button>
           )}
           {item.flag === "pick" && (
-            <span className="px-1.5 py-0.5 rounded-md bg-emerald-600/85 text-[10px] font-semibold text-white">精选</span>
+            <span className="px-1.5 py-0.5 rounded-md bg-emerald-600/85 text-[10px] font-semibold text-white">
+              {t("精选", "Pick")}
+            </span>
           )}
           {item.flag === "reject" && (
-            <span className="px-1.5 py-0.5 rounded-md bg-rose-600/85 text-[10px] font-semibold text-white">废片</span>
+            <span className="px-1.5 py-0.5 rounded-md bg-rose-600/85 text-[10px] font-semibold text-white">
+              {t("废片", "Reject")}
+            </span>
           )}
         </div>
 
         {/* Top-right Multi-select Checkbox */}
         <button
           type="button"
-          title="勾选用于 A/B 对比或批量操作"
+          title={t("勾选用于 A/B 对比或批量操作", "Select for A/B compare or batch actions")}
           onClick={(e) => {
             e.stopPropagation();
             onToggleCheck(item.id);
@@ -206,7 +215,7 @@ const AssetCard = React.memo(function AssetCard({
           <div className="flex items-center gap-1">
             <button
               type="button"
-              title="标记精选 (P)"
+              title={t("标记精选 (P)", "Pick (P)")}
               onClick={(e) => {
                 e.stopPropagation();
                 onQuickFlag(item.id, item.flag === "pick" ? "" : "pick");
@@ -219,7 +228,7 @@ const AssetCard = React.memo(function AssetCard({
             </button>
             <button
               type="button"
-              title="标记废片 (X)"
+              title={t("标记废片 (X)", "Reject (X)")}
               onClick={(e) => {
                 e.stopPropagation();
                 onQuickFlag(item.id, item.flag === "reject" ? "" : "reject");
@@ -232,7 +241,7 @@ const AssetCard = React.memo(function AssetCard({
             </button>
             <button
               type="button"
-              title={item.is_hidden ? "取消隐藏" : "隐藏该资产"}
+              title={item.is_hidden ? t("取消隐藏", "Unhide asset") : t("隐藏该资产", "Hide asset")}
               onClick={(e) => {
                 e.stopPropagation();
                 onQuickHide(item);
@@ -248,7 +257,7 @@ const AssetCard = React.memo(function AssetCard({
         {Boolean(item.is_hidden) && (
           <div className="absolute top-2 left-9 z-10 px-1.5 py-0.5 rounded bg-amber-500/90 text-black text-[10px] font-bold flex items-center gap-0.5 shadow">
             <EyeOff className="w-2.5 h-2.5" />
-            隐藏
+            {t("隐藏", "Hidden")}
           </div>
         )}
       </div>
@@ -302,6 +311,7 @@ export const VirtualMasonry: React.FC<Props> = ({
   onFilterRecipe,
   onLoadMore,
 }) => {
+  const { t } = useI18n();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [containerWidth, setContainerWidth] = useState(960);
   const [viewportHeight, setViewportHeight] = useState(800);
@@ -499,8 +509,12 @@ export const VirtualMasonry: React.FC<Props> = ({
     >
       {items.length === 0 && !loading ? (
         <div className="h-full flex flex-col items-center justify-center text-zinc-500 gap-2 p-8">
-          <div className="text-lg font-medium text-zinc-300">当前筛选条件下暂无资源</div>
-          <div className="text-sm">可以切换左侧目录/筛选条件，或点击右上角“扫描目录”刷新资源库</div>
+          <div className="text-lg font-medium text-zinc-300">
+            {t("当前筛选条件下暂无资源", "No assets match the current filters")}
+          </div>
+          <div className="text-sm">
+            {t("可以切换左侧目录/筛选条件，或点击右上角“扫描目录”刷新资源库", "Adjust sidebar filters or click Scan in the top bar to refresh")}
+          </div>
         </div>
       ) : (
         <div className="relative w-full" style={{ height: totalHeight }}>
@@ -544,7 +558,9 @@ export const VirtualMasonry: React.FC<Props> = ({
             onClick={onLoadMore}
             className="px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs text-zinc-200 border border-zinc-700 disabled:opacity-50"
           >
-            {loading ? "加载中..." : `加载更多（已显示 ${items.length} / ${total}）`}
+            {loading
+              ? t("加载中...", "Loading...")
+              : t(`加载更多（已显示 ${items.length} / ${total}）`, `Load More (${items.length} / ${total})`)}
           </button>
         </div>
       )}

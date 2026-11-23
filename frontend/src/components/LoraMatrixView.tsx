@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { ArrowRight, Layers, Search, Sparkles, Star } from "lucide-react";
 import { api, formatTime } from "../api";
+import { useI18n } from "../i18n";
 import type { LoraMatrixRow } from "../types";
 
 interface Props {
@@ -9,6 +10,7 @@ interface Props {
 }
 
 export const LoraMatrixView: React.FC<Props> = ({ onSelectLora, onSelectAssetId }) => {
+  const { t } = useI18n();
   const [rows, setRows] = useState<LoraMatrixRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -30,10 +32,13 @@ export const LoraMatrixView: React.FC<Props> = ({ onSelectLora, onSelectAssetId 
           <div>
             <h1 className="text-lg font-bold text-white flex items-center gap-2">
               <Sparkles className="w-5 h-5 text-purple-400" />
-              人物 LoRA 专项档案
+              {t("人物 LoRA 专项档案", "Character LoRA Archive")}
             </h1>
             <p className="text-xs text-zinc-400 mt-0.5">
-              按 LoRA 文件聚合所有测试图与视频，直观对比不同 Epoch 的常用权重区间与出图精选率
+              {t(
+                "按 LoRA 文件聚合所有测试图与视频，直观对比不同 Epoch 的常用权重区间与出图精选率",
+                "Group all test images and videos by LoRA file to compare weight ranges and pick rates across epochs"
+              )}
             </p>
           </div>
           <div className="relative w-72">
@@ -42,17 +47,17 @@ export const LoraMatrixView: React.FC<Props> = ({ onSelectLora, onSelectAssetId 
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="筛选 LoRA 名称 / Epoch..."
+              placeholder={t("筛选 LoRA 名称 / Epoch...", "Filter LoRA name / Epoch...")}
               className="w-full h-9 pl-8 pr-3 rounded-lg bg-[#141722] border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-purple-500"
             />
           </div>
         </div>
 
         {loading ? (
-          <div className="py-16 text-center text-zinc-500 text-sm">正在聚合 LoRA 档案...</div>
+          <div className="py-16 text-center text-zinc-500 text-sm">{t("正在聚合 LoRA 档案...", "Aggregating LoRA archive...")}</div>
         ) : filtered.length === 0 ? (
           <div className="py-16 text-center text-zinc-500 text-sm">
-            暂无 LoRA 使用记录（请确保资源库已完成扫描）
+            {t("暂无 LoRA 使用记录（请确保资源库已完成扫描）", "No LoRA usage records yet (make sure your library has been scanned)")}
           </div>
         ) : (
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
@@ -75,30 +80,30 @@ export const LoraMatrixView: React.FC<Props> = ({ onSelectLora, onSelectAssetId 
                       onClick={() => onSelectLora(row.lora_name)}
                       className="px-2.5 py-1 rounded-lg bg-purple-600/20 hover:bg-purple-600/40 border border-purple-500/30 text-[11px] text-purple-200 flex items-center gap-1 shrink-0"
                     >
-                      查看全部 ({row.total_count}) <ArrowRight className="w-3 h-3" />
+                      {t("查看全部", "View All")} ({row.total_count}) <ArrowRight className="w-3 h-3" />
                     </button>
                   </div>
 
                   {/* Stats Row */}
                   <div className="grid grid-cols-4 gap-2 text-[11px]">
                     <div className="px-2.5 py-1.5 rounded-lg bg-[#0c0f17] border border-zinc-800/80">
-                      <div className="text-zinc-500">总出图</div>
+                      <div className="text-zinc-500">{t("总出图", "Total")}</div>
                       <div className="text-zinc-100 font-mono font-semibold">{row.total_count}</div>
                     </div>
                     <div className="px-2.5 py-1.5 rounded-lg bg-[#0c0f17] border border-zinc-800/80">
-                      <div className="text-zinc-500">精选率</div>
+                      <div className="text-zinc-500">{t("精选率", "Pick Rate")}</div>
                       <div className="text-emerald-300 font-mono font-semibold">
                         {row.pick_rate}% ({row.pick_count})
                       </div>
                     </div>
                     <div className="px-2.5 py-1.5 rounded-lg bg-[#0c0f17] border border-zinc-800/80">
-                      <div className="text-zinc-500">权重区间</div>
+                      <div className="text-zinc-500">{t("权重区间", "Weight Range")}</div>
                       <div className="text-purple-300 font-mono font-semibold">
                         {row.min_strength} ~ {row.max_strength}
                       </div>
                     </div>
                     <div className="px-2.5 py-1.5 rounded-lg bg-[#0c0f17] border border-zinc-800/80">
-                      <div className="text-zinc-500">最近使用</div>
+                      <div className="text-zinc-500">{t("最近使用", "Last Used")}</div>
                       <div className="text-zinc-300 font-mono truncate">{formatTime(row.last_used).slice(5, 16)}</div>
                     </div>
                   </div>
@@ -111,7 +116,7 @@ export const LoraMatrixView: React.FC<Props> = ({ onSelectLora, onSelectAssetId 
                         type="button"
                         onClick={() => onSelectAssetId(s.id)}
                         className="group relative aspect-square rounded-lg overflow-hidden bg-[#0a0c12] border border-zinc-800 hover:border-indigo-400"
-                        title={`${s.filename} | 权重: ${s.strength_model}`}
+                        title={t(`${s.filename} | 权重: ${s.strength_model}`, `${s.filename} | Weight: ${s.strength_model}`)}
                       >
                         <img src={s.thumb_url} alt={s.filename} loading="lazy" className="w-full h-full object-cover" />
                         <span className="absolute bottom-0.5 left-0.5 px-1 rounded bg-black/75 text-[9px] font-mono text-purple-200">

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { BookMarked, ImagePlus, Pin, Play, Save, Search, Shuffle, SlidersHorizontal, X } from "lucide-react";
 import { api } from "../api";
+import { useI18n } from "../i18n";
 import type { AssetDetail, ComfyStatus, PromptNodeEntry, SnippetItem } from "../types";
 import { PowerLoraEditor } from "./PowerLoraEditor";
 
@@ -43,6 +44,7 @@ function isEditableInput(val: any): boolean {
 }
 
 export const RemixModal: React.FC<Props> = ({ detail, comfyStatus, onClose, onSaved, onSubmitted, onError }) => {
+  const { t } = useI18n();
   const pinScopeKey = detail.workflow_hash || String(detail.id);
   const [pinnedNodesMap, setPinnedNodesMap] = useState<Record<string, string[]>>(() => {
     try {
@@ -119,7 +121,7 @@ export const RemixModal: React.FC<Props> = ({ detail, comfyStatus, onClose, onSa
         setUiTitles(res.ui_titles || {});
         setFieldOptions(res.field_options || {});
       })
-      .catch((e) => onError(`加载完整节点失败: ${e.message}`))
+      .catch((e) => onError(t(`加载完整节点失败: ${e.message}`, `Failed to load full nodes: ${e.message}`)))
       .finally(() => setLoadingCtx(false));
 
     api.listSnippets().then((r) => setSnippets(r.items)).catch(() => {});
@@ -166,7 +168,7 @@ export const RemixModal: React.FC<Props> = ({ detail, comfyStatus, onClose, onSa
 
   const handleUploadImage = async (nid: string, key: string, file: File) => {
     if (!comfyStatus.online) {
-      onError("ComfyUI 离线，无法上传图片");
+      onError(t("ComfyUI 离线，无法上传图片", "ComfyUI is offline; cannot upload image"));
       return;
     }
     try {
@@ -175,9 +177,9 @@ export const RemixModal: React.FC<Props> = ({ detail, comfyStatus, onClose, onSa
       const uploadedName = res.subfolder ? `${res.subfolder}/${res.name}` : res.name;
       updateInput(nid, key, uploadedName);
       setUploadedPreviews((prev) => ({ ...prev, [`${nid}::${key}`]: localUrl }));
-      onSubmitted(`已上传参考图至 ComfyUI: ${uploadedName}`);
+      onSubmitted(t(`已上传参考图至 ComfyUI: ${uploadedName}`, `Uploaded reference image to ComfyUI: ${uploadedName}`));
     } catch (e: any) {
-      onError(`上传失败: ${e.message}`);
+      onError(t(`上传失败: ${e.message}`, `Upload failed: ${e.message}`));
     }
   };
 
@@ -218,9 +220,9 @@ export const RemixModal: React.FC<Props> = ({ detail, comfyStatus, onClose, onSa
     try {
       await api.saveAssetPrompt(detail.id, promptJson);
       onSaved?.();
-      onSubmitted("已保存");
+      onSubmitted(t("已保存", "Saved"));
     } catch (e: any) {
-      onError(`保存失败: ${e.message}`);
+      onError(t(`保存失败: ${e.message}`, `Save failed: ${e.message}`));
     } finally {
       setSaving(false);
     }
@@ -228,7 +230,7 @@ export const RemixModal: React.FC<Props> = ({ detail, comfyStatus, onClose, onSa
 
   const handleSubmit = async () => {
     if (!comfyStatus.online) {
-      onError("ComfyUI 当前未连接，请先启动 ComfyUI");
+      onError(t("ComfyUI 当前未连接，请先启动 ComfyUI", "ComfyUI is not connected. Please start ComfyUI first."));
       return;
     }
     if (!promptJson) return;
@@ -239,10 +241,15 @@ export const RemixModal: React.FC<Props> = ({ detail, comfyStatus, onClose, onSa
         randomize_seed: randomizeSeed,
         batch_count: batchCount,
       });
-      onSubmitted(`已提交 ${res.prompt_ids.length} 个无损派生任务到 ComfyUI（原图参数保持不变）`);
+      onSubmitted(
+        t(
+          `已提交 ${res.prompt_ids.length} 个无损派生任务到 ComfyUI（原图参数保持不变）`,
+          `Submitted ${res.prompt_ids.length} non-destructive remix task(s) to ComfyUI (original asset remains unchanged)`
+        )
+      );
       onClose();
     } catch (e: any) {
-      onError(`提交失败: ${e.message}`);
+      onError(t(`提交失败: ${e.message}`, `Submit failed: ${e.message}`));
     } finally {
       setSubmitting(false);
     }
@@ -256,9 +263,14 @@ export const RemixModal: React.FC<Props> = ({ detail, comfyStatus, onClose, onSa
           <div className="flex items-center gap-2.5">
             <SlidersHorizontal className="w-4 h-4 text-purple-400" />
             <div>
-              <h2 className="text-sm font-semibold text-white">无损微调派生新图 — {detail.filename}</h2>
+              <h2 className="text-sm font-semibold text-white">
+                {t("无损微调派生新图", "Non-destructive Remix")} — {detail.filename}
+              </h2>
               <p className="text-[11px] text-zinc-400">
-                以下修改仅用于本次提交 ComfyUI，原图记录与参数完全只读不变，新图将自动关联到派生谱系
+                {t(
+                  "以下修改仅用于本次提交 ComfyUI，原图记录与参数完全只读不变，新图将自动关联到派生谱系",
+                  "Edits below apply only to this ComfyUI submission. The original asset stays unchanged and new outputs will be linked in lineage."
+                )}
               </p>
             </div>
           </div>
@@ -277,7 +289,7 @@ export const RemixModal: React.FC<Props> = ({ detail, comfyStatus, onClose, onSa
           <div className="lg:col-span-7 h-full overflow-y-auto p-5 space-y-4 border-r border-zinc-800/80">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-zinc-200">
-                提示词节点编辑 ({sortedPromptEntries.length})
+                {t("提示词节点编辑", "Prompt Node Editor")} ({sortedPromptEntries.length})
               </span>
               <button
                 type="button"
@@ -285,14 +297,19 @@ export const RemixModal: React.FC<Props> = ({ detail, comfyStatus, onClose, onSa
                 className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-[11px] text-amber-300 flex items-center gap-1"
               >
                 <BookMarked className="w-3.5 h-3.5" />
-                {showSnippets ? "收起提示词库" : "从提示词库插入"}
+                {showSnippets ? t("收起提示词库", "Hide Snippets") : t("从提示词库插入", "Insert Snippet")}
               </button>
             </div>
 
             {showSnippets && (
               <div className="p-2.5 rounded-xl bg-[#0b0e16] border border-amber-500/30 max-h-40 overflow-y-auto flex flex-wrap gap-1.5">
                 {snippets.length === 0 ? (
-                  <span className="text-[11px] text-zinc-500">提示词库为空，可在“提示词库”页或详情页收藏片段</span>
+                  <span className="text-[11px] text-zinc-500">
+                    {t(
+                      "提示词库为空，可在“提示词库”页或详情页收藏片段",
+                      "Snippet library is empty. Save snippets from the Snippets tab or asset detail panel."
+                    )}
+                  </span>
                 ) : (
                   snippets.map((sn) => (
                     <button
@@ -331,7 +348,7 @@ export const RemixModal: React.FC<Props> = ({ detail, comfyStatus, onClose, onSa
                       </span>
                       {isPinned && (
                         <span className="px-1.5 py-0.5 rounded bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[10px] shrink-0">
-                          已置顶
+                          {t("已置顶", "Pinned")}
                         </span>
                       )}
                     </div>
@@ -340,7 +357,7 @@ export const RemixModal: React.FC<Props> = ({ detail, comfyStatus, onClose, onSa
                       <button
                         type="button"
                         onClick={() => togglePinNode(pinKey)}
-                        title={isPinned ? "取消置顶该节点" : "置顶该节点"}
+                        title={isPinned ? t("取消置顶该节点", "Unpin this node") : t("置顶该节点", "Pin this node")}
                         className={`p-1 rounded-md transition-colors ${
                           isPinned
                             ? "text-amber-400 bg-amber-500/15 hover:bg-amber-500/25"
@@ -367,7 +384,7 @@ export const RemixModal: React.FC<Props> = ({ detail, comfyStatus, onClose, onSa
           <div className="lg:col-span-5 h-full flex flex-col overflow-hidden bg-[#0e111a]">
             <div className="px-4 py-2.5 border-b border-zinc-800 flex items-center justify-between gap-2 shrink-0">
               <span className="text-xs font-semibold text-zinc-200 whitespace-nowrap">
-                全部可调参数节点 ({otherEditableNodes.length})
+                {t("全部可调参数节点", "All Adjustable Parameter Nodes")} ({otherEditableNodes.length})
               </span>
               <div className="relative flex-1 max-w-[230px]">
                 <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
@@ -375,7 +392,7 @@ export const RemixModal: React.FC<Props> = ({ detail, comfyStatus, onClose, onSa
                   type="text"
                   value={nodeFilter}
                   onChange={(e) => setNodeFilter(e.target.value)}
-                  placeholder="过滤节点编号/名称/参数..."
+                  placeholder={t("过滤节点编号/名称/参数...", "Filter node ID / name / param...")}
                   className="w-full h-7 pl-8 pr-2 rounded-lg bg-[#141824] border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-indigo-500"
                 />
               </div>
@@ -383,7 +400,9 @@ export const RemixModal: React.FC<Props> = ({ detail, comfyStatus, onClose, onSa
 
             <div className="flex-1 overflow-y-auto p-4 space-y-3.5">
               {loadingCtx ? (
-                <div className="py-12 text-center text-xs text-zinc-500">正在加载所有可调参数节点...</div>
+                <div className="py-12 text-center text-xs text-zinc-500">
+                  {t("正在加载所有可调参数节点...", "Loading all adjustable parameter nodes...")}
+                </div>
               ) : (
                 otherEditableNodes.map((node) => {
                   const isLoadImage = node.class_type.toLowerCase().includes("loadimage");
@@ -406,7 +425,7 @@ export const RemixModal: React.FC<Props> = ({ detail, comfyStatus, onClose, onSa
                           </span>
                           {isPinned && (
                             <span className="px-1.5 py-0.5 rounded bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[10px] shrink-0">
-                              已置顶
+                              {t("已置顶", "Pinned")}
                             </span>
                           )}
                         </div>
@@ -415,7 +434,7 @@ export const RemixModal: React.FC<Props> = ({ detail, comfyStatus, onClose, onSa
                           <button
                             type="button"
                             onClick={() => togglePinNode(node.nid)}
-                            title={isPinned ? "取消置顶该节点" : "置顶该节点"}
+                            title={isPinned ? t("取消置顶该节点", "Unpin this node") : t("置顶该节点", "Pin this node")}
                             className={`p-1 rounded-md transition-colors ${
                               isPinned
                                 ? "text-amber-400 bg-amber-500/15 hover:bg-amber-500/25"
@@ -512,7 +531,7 @@ export const RemixModal: React.FC<Props> = ({ detail, comfyStatus, onClose, onSa
                               <div key={key} className="space-y-0.5">
                                 <div className="flex items-center justify-between text-[10px]">
                                   <span className="text-zinc-400 font-mono truncate">{key}</span>
-                                  {isSeed && randomizeSeed && <span className="text-indigo-400">自动随机</span>}
+                                  {isSeed && randomizeSeed && <span className="text-indigo-400">{t("自动随机", "Auto-random")}</span>}
                                 </div>
                                 <input
                                   type="number"
@@ -536,7 +555,9 @@ export const RemixModal: React.FC<Props> = ({ detail, comfyStatus, onClose, onSa
                               (strVal ? `/api/comfy/input-image?name=${encodeURIComponent(strVal)}` : "");
                             return (
                               <div key={key} className="sm:col-span-2 space-y-1.5">
-                                <span className="text-[10px] text-zinc-400 font-mono">{key} (参考图)</span>
+                                <span className="text-[10px] text-zinc-400 font-mono">
+                                  {key} ({t("参考图", "Reference Image")})
+                                </span>
                                 <div className="flex items-start gap-2.5">
                                   {previewSrc && (
                                     <div className="w-20 h-20 rounded-lg overflow-hidden bg-[#0a0c12] border border-zinc-700/80 shrink-0">
@@ -567,7 +588,7 @@ export const RemixModal: React.FC<Props> = ({ detail, comfyStatus, onClose, onSa
                                     />
                                     <label className="h-7 px-2.5 rounded bg-sky-600/25 hover:bg-sky-600/40 border border-sky-500/40 text-sky-200 text-[11px] flex items-center gap-1 cursor-pointer shrink-0">
                                       <ImagePlus className="w-3 h-3" />
-                                      上传
+                                      {t("上传", "Upload")}
                                       <input
                                         type="file"
                                         accept="image/*"
@@ -641,10 +662,10 @@ export const RemixModal: React.FC<Props> = ({ detail, comfyStatus, onClose, onSa
                 className="accent-indigo-500"
               />
               <Shuffle className="w-3.5 h-3.5 text-indigo-400" />
-              自动随机化所有 Seed
+              {t("自动随机化所有 Seed", "Randomize all Seeds")}
             </label>
             <div className="flex items-center gap-1.5">
-              <span className="text-zinc-400">本次生成张数</span>
+              <span className="text-zinc-400">{t("本次生成张数", "Batch Count")}</span>
               {[1, 2, 4].map((n) => (
                 <button
                   key={n}
@@ -662,9 +683,9 @@ export const RemixModal: React.FC<Props> = ({ detail, comfyStatus, onClose, onSa
 
           <div className="flex items-center gap-2">
             <span className="text-xs text-zinc-400 mr-1">
-              ComfyUI：
+              {t("ComfyUI：", "ComfyUI: ")}
               <span className={comfyStatus.online ? "text-emerald-400 font-medium" : "text-rose-400 font-medium"}>
-                {comfyStatus.online ? "在线就绪" : "离线"}
+                {comfyStatus.online ? t("在线就绪", "Online") : t("离线", "Offline")}
               </span>
             </span>
             <button
@@ -672,17 +693,20 @@ export const RemixModal: React.FC<Props> = ({ detail, comfyStatus, onClose, onSa
               onClick={onClose}
               className="px-4 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs text-zinc-200"
             >
-              取消
+              {t("取消", "Cancel")}
             </button>
             <button
               type="button"
               disabled={!promptJson || saving}
               onClick={handleSave}
-              title="直接覆盖保存当前修改的参数与提示词（不关闭弹窗）"
+              title={t(
+                "直接覆盖保存当前修改的参数与提示词（不关闭弹窗）",
+                "Overwrite and save current parameter and prompt edits (keeps modal open)"
+              )}
               className="px-4 py-1.5 rounded-lg bg-emerald-600/25 hover:bg-emerald-600/40 border border-emerald-500/40 disabled:opacity-40 text-xs font-semibold text-emerald-200 flex items-center gap-1.5 transition-colors"
             >
               <Save className="w-3.5 h-3.5" />
-              {saving ? "保存中..." : "保存"}
+              {saving ? t("保存中...", "Saving...") : t("保存", "Save")}
             </button>
             <button
               type="button"
@@ -691,7 +715,7 @@ export const RemixModal: React.FC<Props> = ({ detail, comfyStatus, onClose, onSa
               className="px-5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-xs font-semibold text-white flex items-center gap-1.5"
             >
               <Play className="w-3.5 h-3.5 fill-current" />
-              {submitting ? "正在提交..." : `提交生成 (×${batchCount})`}
+              {submitting ? t("正在提交...", "Submitting...") : t(`提交生成 (×${batchCount})`, `Generate (×${batchCount})`)}
             </button>
           </div>
         </div>
