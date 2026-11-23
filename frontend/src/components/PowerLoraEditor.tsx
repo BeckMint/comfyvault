@@ -168,8 +168,7 @@ export const PowerLoraEditor: React.FC<Props> = ({
     <div className="sm:col-span-2 md:col-span-2 space-y-2">
       {loraList.map((item, idx) => {
         const range = getEffectiveRange(item.lora, item.strength, customRanges, autoRanges);
-        const span = range.max - range.min;
-        const step = span > 6 ? 0.1 : 0.05;
+        const step = 0.01;
         const isEditingRange = editingRangeLora === item.lora;
 
         return (
@@ -255,18 +254,18 @@ export const PowerLoraEditor: React.FC<Props> = ({
                 <span className="text-zinc-400">{t("滑块范围：", "Slider range:")}</span>
                 <input
                   type="number"
-                  step="0.5"
+                  step="0.01"
                   value={rangeMinDraft}
                   onChange={(e) => setRangeMinDraft(e.target.value)}
-                  className="w-16 h-6 px-1.5 rounded bg-[#141926] border border-zinc-700 text-xs font-mono text-zinc-100"
+                  className="w-20 h-6 px-1.5 rounded bg-[#141926] border border-zinc-700 text-xs font-mono text-zinc-100"
                 />
                 <span className="text-zinc-500">~</span>
                 <input
                   type="number"
-                  step="0.5"
+                  step="0.01"
                   value={rangeMaxDraft}
                   onChange={(e) => setRangeMaxDraft(e.target.value)}
-                  className="w-16 h-6 px-1.5 rounded bg-[#141926] border border-zinc-700 text-xs font-mono text-zinc-100"
+                  className="w-20 h-6 px-1.5 rounded bg-[#141926] border border-zinc-700 text-xs font-mono text-zinc-100"
                 />
                 <button
                   type="button"
@@ -285,7 +284,7 @@ export const PowerLoraEditor: React.FC<Props> = ({
               step={step}
               disabled={!item.on}
               value={item.strength}
-              onChange={(e) => updateAt(idx, { strength: Number(e.target.value) })}
+              onChange={(e) => updateAt(idx, { strength: Math.round(Number(e.target.value) * 100) / 100 })}
               className="w-full accent-purple-500"
             />
           </div>
