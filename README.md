@@ -1,8 +1,10 @@
 <div align="center">
 
-# ComfyVault
+# ComfyVault `v0.1.0`
 
 **A Local Asset Manager, Parameter Tracker, Workflow Launcher & Non-Destructive Remix Studio for ComfyUI**
+
+![Version](https://img.shields.io/badge/version-0.1.0-indigo) ![License](https://img.shields.io/badge/license-MIT-emerald)
 
 [English](README.md) · [简体中文](README_ZH.md)
 
