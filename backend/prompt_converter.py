@@ -345,22 +345,75 @@ def _dispatch_paste_image(page: Any, editor: Any, image_path: str) -> None:
     )
 
 
+def _is_signed_out_page(page: Any, provider: str) -> bool:
+    """Detect whether Gemini or ChatGPT is in guest/signed-out mode (where image upload is disabled)."""
+    selectors = (
+        [
+            '[data-test-id="sign-out-banner"]',
+            'a[href*="accounts.google.com/ServiceLogin"]',
+            'button:has-text("登录")',
+            'button:has-text("Sign in")',
+            'a:has-text("登录")',
+            'a:has-text("Sign in")',
+        ]
+        if provider == "gemini"
+        else [
+            'button[data-testid="login-button"]',
+            'button:has-text("登录")',
+            'button:has-text("Log in")',
+            'button:has-text("免费注册")',
+            'button:has-text("Sign up")',
+        ]
+    )
+    for sel in selectors:
+        try:
+            loc = page.locator(sel).first
+            if loc.count() > 0 and loc.is_visible():
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def _set_best_file_input(page: Any, image_path: str) -> bool:
+    """Find the best <input type='file'> on the page (preferring image-accepting inputs) and set files."""
+    try:
+        inputs = page.locator('input[type="file"]')
+        cnt = inputs.count()
+        if cnt == 0:
+            return False
+        best_idx = 0
+        for i in range(cnt):
+            try:
+                acc = (inputs.nth(i).get_attribute("accept") or "").lower()
+                if "image" in acc or acc == "" or "*/*" in acc:
+                    best_idx = i
+                    break
+            except Exception:
+                continue
+        inputs.nth(best_idx).set_input_files(image_path)
+        return True
+    except Exception:
+        return False
+
+
 def _attach_image_to_page(page: Any, editor: Any, image_path: str, provider: str) -> None:
     """Attach a local image file to Gemini or ChatGPT web composer using resilient multi-strategy upload."""
     p = Path(image_path)
     if not p.exists() or not p.is_file():
         raise FileNotFoundError(f"参考图片不存在: {image_path}")
 
+    if _is_signed_out_page(page, provider):
+        label = "GEMINI" if provider == "gemini" else "CHATGPT"
+        raise RuntimeError(
+            f"{label} 网页版尚未登录（未登录的游客模式不支持上传图片），请先点击右上角「检查/重新登录 {label}」完成登录后重试"
+        )
+
     attached = False
 
     # Strategy 1: Direct <input type="file"> (works natively on ChatGPT and some Gemini views)
-    try:
-        file_inputs = page.locator('input[type="file"]')
-        if file_inputs.count() > 0:
-            file_inputs.first.set_input_files(str(p))
-            attached = _wait_for_attachment_preview(page, provider, timeout_sec=3.5)
-    except Exception:
-        pass
+    if _set_best_file_input(page, str(p)):
+        attached = _wait_for_attachment_preview(page, provider, timeout_sec=3.5)
 
     # Strategy 2: Synthetic ClipboardEvent paste directly into the composer editor (locale-independent)
     if not attached:
@@ -370,9 +423,10 @@ def _attach_image_to_page(page: Any, editor: Any, image_path: str, provider: str
         except Exception:
             pass
 
-    # Strategy 3: Click upload / '+' button and handle native file chooser
+    # Strategy 3: Click upload / '+' button, then either use newly injected <input type="file"> or file chooser
     if not attached:
         upload_btn_selectors = [
+            'button[aria-label*="上传和工具"]',
             'button[aria-label*="Open upload file menu"]',
             'button[aria-label*="Upload"]',
             'button[aria-label*="Add file"]',
@@ -382,6 +436,8 @@ def _attach_image_to_page(page: Any, editor: Any, image_path: str, provider: str
             'button.upload-card-button',
         ]
         menu_item_selectors = [
+            'button[data-test-id="local-images-files-uploader-button"]',
+            'button[data-test-id="hidden-local-image-upload-button"]',
             'button:has-text("Upload files")',
             'button:has-text("Upload image")',
             'button:has-text("上传文件")',
@@ -395,14 +451,24 @@ def _attach_image_to_page(page: Any, editor: Any, image_path: str, provider: str
                 if btn.count() == 0 or not btn.is_visible():
                     continue
                 try:
-                    with page.expect_file_chooser(timeout=2500) as fc_info:
+                    with page.expect_file_chooser(timeout=2000) as fc_info:
                         btn.click()
                     fc_info.value.set_files(str(p))
                     attached = _wait_for_attachment_preview(page, provider, timeout_sec=4.0)
                     if attached:
                         break
                 except Exception:
-                    # Clicking '+' may have opened a popover menu with "Upload files"
+                    # Clicking '+' may have opened a menu & injected <input type="file"> into the DOM
+                    time.sleep(0.5)
+                    if _is_signed_out_page(page, provider):
+                        label = "GEMINI" if provider == "gemini" else "CHATGPT"
+                        raise RuntimeError(
+                            f"{label} 网页版尚未登录（未登录的游客模式不支持上传图片），请先点击右上角「检查/重新登录 {label}」完成登录后重试"
+                        )
+                    if _set_best_file_input(page, str(p)):
+                        attached = _wait_for_attachment_preview(page, provider, timeout_sec=4.0)
+                        if attached:
+                            break
                     for item_sel in menu_item_selectors:
                         try:
                             item = page.locator(item_sel).first
@@ -417,12 +483,14 @@ def _attach_image_to_page(page: Any, editor: Any, image_path: str, provider: str
                             continue
                     if attached:
                         break
+            except RuntimeError:
+                raise
             except Exception:
                 continue
 
     if not attached:
         raise RuntimeError(
-            f"未能将参考图片上传到 {provider.upper()} 网页端，请勾选「显示浏览器窗口」检查页面状态"
+            f"未能将参考图片上传到 {provider.upper()} 网页端，请确认已登录并可勾选「显示浏览器窗口」检查页面状态"
         )
 
     # Give the web client a moment to finish uploading the image blob before typing & sending
