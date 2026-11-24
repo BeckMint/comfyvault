@@ -191,8 +191,8 @@ const AssetCard = React.memo(function AssetCard({
           <Check className="w-3.5 h-3.5 stroke-[3]" />
         </button>
 
-        {/* Bottom Hover Quick Actions */}
-        <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/85 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-between">
+        {/* Bottom Hover Quick Actions (2-row layout: stars on top, pick/reject/hide below so buttons never clip) */}
+        <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/90 via-black/55 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col gap-1.5">
           <div className="flex items-center gap-0.5">
             {[1, 2, 3, 4, 5].map((s) => (
               <button
