@@ -2,6 +2,7 @@ import base64
 import mimetypes
 import os
 import re
+import subprocess
 import threading
 import time
 from pathlib import Path
@@ -191,10 +192,24 @@ def extract_marked_prompt(raw_text: str) -> str:
     return cleaned.strip()
 
 
+def _detect_browser_exe() -> Optional[str]:
+    candidates = [
+        r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+        r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+        r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+        r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+    ]
+    for path in candidates:
+        if Path(path).exists():
+            return path
+    return None
+
+
 def _detect_browser_channel() -> Optional[str]:
-    if Path(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe").exists():
+    exe = _detect_browser_exe() or ""
+    if "msedge.exe" in exe.lower():
         return "msedge"
-    if Path(r"C:\Program Files\Google\Chrome\Application\chrome.exe").exists():
+    if "chrome.exe" in exe.lower():
         return "chrome"
     return None
 
@@ -216,16 +231,92 @@ def get_converter_status() -> Dict[str, Any]:
     }
 
 
+def _kill_profile_browsers() -> None:
+    """Terminate any lingering browser processes bound to WEB_LLM_PROFILE_DIR (Windows)."""
+    if os.name != "nt":
+        return
+    try:
+        subprocess.run(
+            [
+                "powershell.exe",
+                "-NoProfile",
+                "-Command",
+                "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*web_llm_profile*' -and ($_.Name -eq 'msedge.exe' -or $_.Name -eq 'chrome.exe') } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }",
+            ],
+            capture_output=True,
+            timeout=5,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except Exception:
+        pass
+
+
+_active_login_proc: Optional[subprocess.Popen] = None
+
+
 def open_login_browser_sync(provider: str) -> Dict[str, Any]:
-    """Open a visible persistent Edge/Chrome window so the user can sign in once to Gemini or ChatGPT."""
+    """Open a genuine, visible Edge/Chrome window bound to WEB_LLM_PROFILE_DIR so the user can sign in once."""
+    global _active_login_proc
     url = "https://gemini.google.com/app" if provider == "gemini" else "https://chatgpt.com/"
     WEB_LLM_PROFILE_DIR.mkdir(parents=True, exist_ok=True)
-    channel = _detect_browser_channel()
+    browser_exe = _detect_browser_exe()
+
+    # If a previous login window is still open/stuck, close it cleanly so the user never gets permanently locked out
+    if _active_login_proc is not None and _active_login_proc.poll() is None:
+        try:
+            _active_login_proc.terminate()
+        except Exception:
+            pass
+        _kill_profile_browsers()
+        time.sleep(0.5)
+
+    if _browser_lock.locked():
+        # If no active login proc is alive, another conversion is running
+        if _active_login_proc is None or _active_login_proc.poll() is not None:
+            return {"ok": False, "error": "当前正在执行 AI 转换任务，请稍候完成后再打开登录窗口"}
 
     def _run_login() -> None:
-        if not _browser_lock.acquire(blocking=False):
+        global _active_login_proc
+        if not _browser_lock.acquire(timeout=3):
             return
         try:
+            if browser_exe:
+                # Launch genuine Edge/Chrome directly with explicit SW_SHOWNORMAL so:
+                # 1) It is ALWAYS visible in foreground (never hidden by parent SW_HIDE),
+                # 2) Google/OpenAI login never triggers automation security blocks,
+                # 3) Login cookies are persisted directly into WEB_LLM_PROFILE_DIR for Playwright!
+                si = None
+                creationflags = 0
+                if os.name == "nt":
+                    si = subprocess.STARTUPINFO()
+                    si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                    si.wShowWindow = 1  # SW_SHOWNORMAL
+                    creationflags = subprocess.CREATE_NEW_PROCESS_GROUP
+                proc = subprocess.Popen(
+                    [
+                        browser_exe,
+                        f"--user-data-dir={WEB_LLM_PROFILE_DIR}",
+                        "--no-first-run",
+                        "--no-default-browser-check",
+                        "--new-window",
+                        url,
+                    ],
+                    startupinfo=si,
+                    creationflags=creationflags,
+                )
+                _active_login_proc = proc
+                try:
+                    proc.wait(timeout=900)
+                except subprocess.TimeoutExpired:
+                    try:
+                        proc.terminate()
+                    except Exception:
+                        pass
+                finally:
+                    _active_login_proc = None
+                return
+
+            # Fallback for non-Windows or missing system Edge/Chrome: use Playwright
             from playwright.sync_api import sync_playwright
 
             with sync_playwright() as p:
@@ -239,13 +330,10 @@ def open_login_browser_sync(provider: str) -> Dict[str, Any]:
                         "--no-default-browser-check",
                     ],
                 }
-                if channel:
-                    launch_kwargs["channel"] = channel
                 ctx = p.chromium.launch_persistent_context(**launch_kwargs)
                 try:
                     page = ctx.pages[0] if ctx.pages else ctx.new_page()
                     page.goto(url, wait_until="domcontentloaded", timeout=30000)
-                    # Keep browser open until the user closes it (up to 15 min)
                     deadline = time.time() + 900
                     while time.time() < deadline:
                         if not ctx.pages:
@@ -263,10 +351,8 @@ def open_login_browser_sync(provider: str) -> Dict[str, Any]:
         except Exception as e:
             print(f"[PromptConverter] Login browser error: {e}")
         finally:
+            _active_login_proc = None
             _browser_lock.release()
-
-    if _browser_lock.locked():
-        return {"ok": False, "error": "浏览器正在运行中（请先关闭已打开的登录窗口或等待当前转换完成）"}
 
     t = threading.Thread(target=_run_login, daemon=True, name=f"web-llm-login-{provider}")
     t.start()
