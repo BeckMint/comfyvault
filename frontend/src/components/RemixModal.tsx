@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { BookMarked, ImagePlus, Pin, Play, Save, Search, Shuffle, SlidersHorizontal, X } from "lucide-react";
+import { BookMarked, ImagePlus, Pin, Play, Save, Search, Shuffle, SlidersHorizontal, Workflow, X } from "lucide-react";
 import { api } from "../api";
 import { useI18n } from "../i18n";
 import type { AssetDetail, ComfyStatus, PromptNodeEntry, SnippetItem } from "../types";
@@ -257,11 +257,30 @@ export const RemixModal: React.FC<Props> = ({ detail, comfyStatus, onClose, onSa
         {/* Header */}
         <div className="px-5 py-3.5 border-b border-zinc-800 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2.5">
-            <SlidersHorizontal className="w-4 h-4 text-purple-400" />
-            <div>
-              <h2 className="text-sm font-semibold text-white">
+            <SlidersHorizontal className="w-4 h-4 text-purple-400 shrink-0" />
+            <div className="min-w-0 space-y-0.5">
+              <h2 className="text-sm font-semibold text-white truncate">
                 {t("无损微调派生新图", "Non-destructive Remix")} — {detail.filename}
               </h2>
+              <div className="flex flex-wrap items-center gap-2 text-[11px] text-emerald-300">
+                <span className="inline-flex items-center gap-1 font-medium">
+                  <Workflow className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  {t("所用工作流：", "Workflow: ")}
+                  <span className="text-zinc-100">
+                    {detail.workflow_name || t("未命名工作流", "Unnamed Workflow")}
+                  </span>
+                </span>
+                {detail.workflow_hash && (
+                  <span className="px-1.5 py-0.2 rounded bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-mono text-[10px]">
+                    #{detail.workflow_hash.slice(0, 6)}
+                  </span>
+                )}
+                {detail.base_model && (
+                  <span className="px-1.5 py-0.2 rounded bg-sky-500/15 border border-sky-500/30 text-sky-300 font-mono text-[10px] truncate max-w-[280px]" title={detail.base_model}>
+                    {detail.base_model.split(/[\\/]/).pop()}
+                  </span>
+                )}
+              </div>
               <p className="text-[11px] text-zinc-400">
                 {t(
                   "以下修改仅用于本次提交 ComfyUI，原图记录与参数完全只读不变，新图将自动关联到派生谱系",
