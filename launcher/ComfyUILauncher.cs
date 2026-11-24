@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
+using System.Globalization;
 using System.IO;
 using System.Net;
 using System.Runtime.InteropServices;
@@ -23,15 +24,21 @@ namespace ComfyUILauncher
         private static NotifyIcon trayIcon;
         private static ToolStripMenuItem statusItem;
         private static ToolStripMenuItem vaultStatusItem;
+        private static ToolStripMenuItem vaultMenu;
+        private static ToolStripMenuItem openVaultItem;
         private static ToolStripMenuItem startVaultItem;
         private static ToolStripMenuItem restartVaultItem;
         private static ToolStripMenuItem stopVaultItem;
+        private static ToolStripMenuItem comfyMenu;
+        private static ToolStripMenuItem openComfyItem;
         private static ToolStripMenuItem startComfyItem;
         private static ToolStripMenuItem restartComfyItem;
         private static ToolStripMenuItem stopComfyItem;
         private static ToolStripMenuItem startAllItem;
         private static ToolStripMenuItem restartAllItem;
         private static ToolStripMenuItem stopAllItem;
+        private static ToolStripMenuItem langToggleItem;
+        private static ToolStripMenuItem exitItem;
         private static System.Windows.Forms.Timer statusTimer;
         private static Icon currentIcon;
         private static ComfyStatus lastStatus = (ComfyStatus)(-1);
@@ -40,11 +47,68 @@ namespace ComfyUILauncher
         private static readonly string BatPath = Path.Combine(BaseDir, "run_nvidia_gpu.bat");
         private static readonly string PythonExe = Path.Combine(BaseDir, @"python_embeded\python.exe");
         private static readonly string VaultDir = Path.Combine(BaseDir, "ComfyVault");
+        private static readonly string LangConfigPath = Path.Combine(VaultDir, @"data\launcher_lang.txt");
+        private static bool isChinese = DetectInitialChinese();
         private static readonly int ComfyPort = DetectComfyPort();
         private static readonly string WebUrl = "http://127.0.0.1:" + ComfyPort + "/";
         private static readonly string SystemStatsUrl = "http://127.0.0.1:" + ComfyPort + "/system_stats";
         private static readonly string VaultUrl = "http://127.0.0.1:8189/";
         private static readonly string VaultHealthUrl = "http://127.0.0.1:8189/api/health";
+
+        private static string T(string zh, string en)
+        {
+            return isChinese ? zh : en;
+        }
+
+        private static bool DetectInitialChinese()
+        {
+            try
+            {
+                if (File.Exists(LangConfigPath))
+                {
+                    string v = File.ReadAllText(LangConfigPath).Trim().ToLowerInvariant();
+                    if (v == "en") return false;
+                    if (v == "zh") return true;
+                }
+            }
+            catch { }
+            return CultureInfo.CurrentUICulture.TwoLetterISOLanguageName.Equals("zh", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static void ToggleLanguage()
+        {
+            isChinese = !isChinese;
+            try
+            {
+                string dir = Path.GetDirectoryName(LangConfigPath);
+                if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+                File.WriteAllText(LangConfigPath, isChinese ? "zh" : "en");
+            }
+            catch { }
+            ApplyMenuTexts();
+            RefreshStatus();
+        }
+
+        private static void ApplyMenuTexts()
+        {
+            vaultMenu.Text = T("ComfyVault 资产库 (8189)", "ComfyVault (8189)");
+            openVaultItem.Text = T("打开网页 (http://127.0.0.1:8189)", "Open Web UI (http://127.0.0.1:8189)");
+            startVaultItem.Text = T("启动 ComfyVault", "Start ComfyVault");
+            restartVaultItem.Text = T("重启 ComfyVault", "Restart ComfyVault");
+            stopVaultItem.Text = T("停止 ComfyVault", "Stop ComfyVault");
+
+            comfyMenu.Text = T("ComfyUI 主程序 (" + ComfyPort + ")", "ComfyUI (" + ComfyPort + ")");
+            openComfyItem.Text = T("打开网页 (http://127.0.0.1:" + ComfyPort + ")", "Open Web UI (http://127.0.0.1:" + ComfyPort + ")");
+            startComfyItem.Text = T("启动 ComfyUI", "Start ComfyUI");
+            restartComfyItem.Text = T("重启 ComfyUI", "Restart ComfyUI");
+            stopComfyItem.Text = T("停止 ComfyUI", "Stop ComfyUI");
+
+            startAllItem.Text = T("启动全部 (ComfyUI + ComfyVault)", "Start All (ComfyUI + ComfyVault)");
+            restartAllItem.Text = T("重启全部服务", "Restart All Services");
+            stopAllItem.Text = T("停止全部服务", "Stop All Services");
+            langToggleItem.Text = T("Language: English", "语言：切换为中文");
+            exitItem.Text = T("退出启动器", "Exit Launcher");
+        }
 
         private static int DetectComfyPort()
         {
@@ -88,17 +152,17 @@ namespace ComfyUILauncher
 
                 ContextMenuStrip menu = new ContextMenuStrip();
 
-                statusItem = new ToolStripMenuItem("ComfyUI: 检测中...");
+                statusItem = new ToolStripMenuItem("ComfyUI: ...");
                 statusItem.Enabled = false;
-                vaultStatusItem = new ToolStripMenuItem("ComfyVault: 检测中...");
+                vaultStatusItem = new ToolStripMenuItem("ComfyVault: ...");
                 vaultStatusItem.Enabled = false;
 
                 // ComfyVault independent submenu
-                ToolStripMenuItem vaultMenu = new ToolStripMenuItem("ComfyVault 资产库 (8189)");
-                ToolStripMenuItem openVaultItem = new ToolStripMenuItem("打开网页 (http://127.0.0.1:8189)", null, (s, e) => OpenUrl(VaultUrl));
-                startVaultItem = new ToolStripMenuItem("启动 ComfyVault", null, (s, e) => { StartVault(true); RefreshStatus(); });
-                restartVaultItem = new ToolStripMenuItem("重启 ComfyVault", null, (s, e) => ThreadPool.QueueUserWorkItem(_ => RestartVault()));
-                stopVaultItem = new ToolStripMenuItem("停止 ComfyVault", null, (s, e) => { StopVault(true); RefreshStatus(); });
+                vaultMenu = new ToolStripMenuItem();
+                openVaultItem = new ToolStripMenuItem("", null, (s, e) => OpenUrl(VaultUrl));
+                startVaultItem = new ToolStripMenuItem("", null, (s, e) => { StartVault(true); RefreshStatus(); });
+                restartVaultItem = new ToolStripMenuItem("", null, (s, e) => ThreadPool.QueueUserWorkItem(_ => RestartVault()));
+                stopVaultItem = new ToolStripMenuItem("", null, (s, e) => { StopVault(true); RefreshStatus(); });
                 vaultMenu.DropDownItems.Add(openVaultItem);
                 vaultMenu.DropDownItems.Add(new ToolStripSeparator());
                 vaultMenu.DropDownItems.Add(startVaultItem);
@@ -106,11 +170,11 @@ namespace ComfyUILauncher
                 vaultMenu.DropDownItems.Add(stopVaultItem);
 
                 // ComfyUI independent submenu
-                ToolStripMenuItem comfyMenu = new ToolStripMenuItem("ComfyUI 主程序 (" + ComfyPort + ")");
-                ToolStripMenuItem openComfyItem = new ToolStripMenuItem("打开网页 (http://127.0.0.1:" + ComfyPort + ")", null, (s, e) => OpenUrl(WebUrl));
-                startComfyItem = new ToolStripMenuItem("启动 ComfyUI", null, (s, e) => { StartComfy(true); RefreshStatus(); });
-                restartComfyItem = new ToolStripMenuItem("重启 ComfyUI", null, (s, e) => ThreadPool.QueueUserWorkItem(_ => RestartComfy()));
-                stopComfyItem = new ToolStripMenuItem("停止 ComfyUI", null, (s, e) => { StopComfy(true); RefreshStatus(); });
+                comfyMenu = new ToolStripMenuItem();
+                openComfyItem = new ToolStripMenuItem("", null, (s, e) => OpenUrl(WebUrl));
+                startComfyItem = new ToolStripMenuItem("", null, (s, e) => { StartComfy(true); RefreshStatus(); });
+                restartComfyItem = new ToolStripMenuItem("", null, (s, e) => ThreadPool.QueueUserWorkItem(_ => RestartComfy()));
+                stopComfyItem = new ToolStripMenuItem("", null, (s, e) => { StopComfy(true); RefreshStatus(); });
                 comfyMenu.DropDownItems.Add(openComfyItem);
                 comfyMenu.DropDownItems.Add(new ToolStripSeparator());
                 comfyMenu.DropDownItems.Add(startComfyItem);
@@ -118,10 +182,13 @@ namespace ComfyUILauncher
                 comfyMenu.DropDownItems.Add(stopComfyItem);
 
                 // Combined quick actions
-                startAllItem = new ToolStripMenuItem("启动全部 (ComfyUI + ComfyVault)", null, (s, e) => StartAll(true));
-                restartAllItem = new ToolStripMenuItem("重启全部服务", null, (s, e) => ThreadPool.QueueUserWorkItem(_ => RestartAll()));
-                stopAllItem = new ToolStripMenuItem("停止全部服务", null, (s, e) => StopAll(true));
-                ToolStripMenuItem exitItem = new ToolStripMenuItem("退出启动器", null, (s, e) => ExitApp());
+                startAllItem = new ToolStripMenuItem("", null, (s, e) => StartAll(true));
+                restartAllItem = new ToolStripMenuItem("", null, (s, e) => ThreadPool.QueueUserWorkItem(_ => RestartAll()));
+                stopAllItem = new ToolStripMenuItem("", null, (s, e) => StopAll(true));
+                langToggleItem = new ToolStripMenuItem("", null, (s, e) => ToggleLanguage());
+                exitItem = new ToolStripMenuItem("", null, (s, e) => ExitApp());
+
+                ApplyMenuTexts();
 
                 menu.Items.Add(statusItem);
                 menu.Items.Add(vaultStatusItem);
@@ -133,6 +200,7 @@ namespace ComfyUILauncher
                 menu.Items.Add(restartAllItem);
                 menu.Items.Add(stopAllItem);
                 menu.Items.Add(new ToolStripSeparator());
+                menu.Items.Add(langToggleItem);
                 menu.Items.Add(exitItem);
 
                 trayIcon = new NotifyIcon();
@@ -167,7 +235,7 @@ namespace ComfyUILauncher
             bool vaultRunning = IsHttpResponding(VaultHealthUrl);
 
             statusItem.Text = "ComfyUI: " + GetStatusLabel(status);
-            vaultStatusItem.Text = "ComfyVault: " + (vaultRunning ? "运行中 (8189)" : "已停止");
+            vaultStatusItem.Text = "ComfyVault: " + (vaultRunning ? T("运行中 (8189)", "Running (8189)") : T("已停止", "Stopped"));
 
             startVaultItem.Enabled = !vaultRunning;
             restartVaultItem.Enabled = vaultRunning;
@@ -187,7 +255,7 @@ namespace ComfyUILauncher
                 SetTrayIcon(status);
             }
 
-            trayIcon.Text = string.Format("ComfyUI: {0} | Vault: {1}", GetStatusLabel(status), vaultRunning ? "运行中" : "已停止");
+            trayIcon.Text = string.Format("ComfyUI: {0} | Vault: {1}", GetStatusLabel(status), vaultRunning ? T("运行中", "Running") : T("已停止", "Stopped"));
 
             if (pendingOpenVault && vaultRunning)
             {
@@ -205,9 +273,9 @@ namespace ComfyUILauncher
         {
             switch (status)
             {
-                case ComfyStatus.Running: return "运行中 (" + ComfyPort + ")";
-                case ComfyStatus.Starting: return "启动中...";
-                default: return "已停止";
+                case ComfyStatus.Running: return T("运行中 (" + ComfyPort + ")", "Running (" + ComfyPort + ")");
+                case ComfyStatus.Starting: return T("启动中...", "Starting...");
+                default: return T("已停止", "Stopped");
             }
         }
 
@@ -297,7 +365,7 @@ namespace ComfyUILauncher
             }
             catch (Exception ex)
             {
-                ShowTip("启动 ComfyVault 失败: " + ex.Message, ToolTipIcon.Error);
+                ShowTip(T("启动 ComfyVault 失败: ", "Failed to start ComfyVault: ") + ex.Message, ToolTipIcon.Error);
             }
         }
 
@@ -316,7 +384,7 @@ namespace ComfyUILauncher
             }
             if (!File.Exists(BatPath))
             {
-                ShowTip("找不到启动脚本: " + BatPath, ToolTipIcon.Error);
+                ShowTip(T("找不到启动脚本: ", "Launch script not found: ") + BatPath, ToolTipIcon.Error);
                 return;
             }
             try
@@ -328,11 +396,11 @@ namespace ComfyUILauncher
                 psi.WindowStyle = ProcessWindowStyle.Minimized;
                 Process.Start(psi);
                 if (openBrowser) pendingOpenComfy = true;
-                ShowTip("正在启动 ComfyUI，就绪后自动打开网页...", ToolTipIcon.Info);
+                ShowTip(T("正在启动 ComfyUI，就绪后自动打开网页...", "Starting ComfyUI, browser will open once ready..."), ToolTipIcon.Info);
             }
             catch (Exception ex)
             {
-                ShowTip("启动 ComfyUI 失败: " + ex.Message, ToolTipIcon.Error);
+                ShowTip(T("启动 ComfyUI 失败: ", "Failed to start ComfyUI: ") + ex.Message, ToolTipIcon.Error);
             }
         }
 
@@ -341,7 +409,7 @@ namespace ComfyUILauncher
             StopComfy(false);
             Thread.Sleep(1200);
             StartComfy(false);
-            ShowTip("正在重启 ComfyUI...", ToolTipIcon.Info);
+            ShowTip(T("正在重启 ComfyUI...", "Restarting ComfyUI..."), ToolTipIcon.Info);
         }
 
         private static void RestartVault()
@@ -349,7 +417,7 @@ namespace ComfyUILauncher
             StopVault(false);
             Thread.Sleep(800);
             StartVault(false);
-            ShowTip("正在重启 ComfyVault...", ToolTipIcon.Info);
+            ShowTip(T("正在重启 ComfyVault...", "Restarting ComfyVault..."), ToolTipIcon.Info);
         }
 
         private static void RestartAll()
@@ -358,21 +426,21 @@ namespace ComfyUILauncher
             StopVault(false);
             Thread.Sleep(1200);
             StartAll(false);
-            ShowTip("正在重启 ComfyUI 与 ComfyVault...", ToolTipIcon.Info);
+            ShowTip(T("正在重启 ComfyUI 与 ComfyVault...", "Restarting ComfyUI & ComfyVault..."), ToolTipIcon.Info);
         }
 
         private static void StopAll(bool showTip)
         {
             StopComfy(false);
             StopVault(false);
-            if (showTip) ShowTip("已停止 ComfyUI 与 ComfyVault 服务", ToolTipIcon.Info);
+            if (showTip) ShowTip(T("已停止 ComfyUI 与 ComfyVault 服务", "Stopped ComfyUI & ComfyVault"), ToolTipIcon.Info);
             RefreshStatus();
         }
 
         private static void StopVault(bool showTip)
         {
             StopPort(8189);
-            if (showTip) ShowTip("已停止 ComfyVault", ToolTipIcon.Info);
+            if (showTip) ShowTip(T("已停止 ComfyVault", "Stopped ComfyVault"), ToolTipIcon.Info);
         }
 
         private static void StopComfy(bool showTip)
@@ -380,7 +448,7 @@ namespace ComfyUILauncher
             HashSet<int> pids = new HashSet<int>(GetPortOwners(ComfyPort));
             foreach (int pid in GetComfyPids()) pids.Add(pid);
             foreach (int pid in pids) KillPid(pid);
-            if (showTip) ShowTip("已停止 ComfyUI", ToolTipIcon.Info);
+            if (showTip) ShowTip(T("已停止 ComfyUI", "Stopped ComfyUI"), ToolTipIcon.Info);
         }
 
         private static void StopPort(int port)
@@ -493,7 +561,7 @@ namespace ComfyUILauncher
         {
             try
             {
-                trayIcon.ShowBalloonTip(3000, "ComfyUI 启动器", text, icon);
+                trayIcon.ShowBalloonTip(3000, T("ComfyUI 启动器", "ComfyUI Launcher"), text, icon);
             }
             catch { }
         }

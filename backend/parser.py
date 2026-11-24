@@ -293,7 +293,10 @@ def compute_recipe_hash(prompt_json: Optional[Dict[str, Any]]) -> Optional[str]:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
 
 
-def compute_workflow_fingerprint(prompt_json: Optional[Dict[str, Any]]) -> Tuple[Optional[str], Optional[str]]:
+def compute_workflow_fingerprint(
+    prompt_json: Optional[Dict[str, Any]],
+    workflow_json: Optional[Dict[str, Any]] = None,
+) -> Tuple[Optional[str], Optional[str]]:
     if not isinstance(prompt_json, dict) or not prompt_json:
         return None, None
     class_types = sorted(
@@ -306,25 +309,55 @@ def compute_workflow_fingerprint(prompt_json: Optional[Dict[str, Any]]) -> Tuple
     sig = "|".join(class_types)
     wf_hash = hashlib.sha256(sig.encode("utf-8")).hexdigest()[:12]
 
-    # Heuristic human-friendly workflow label
-    joined = " ".join(class_types).lower()
-    if "wanvideo" in joined or "vhs_videocombine" in joined or "savevideo" in joined:
-        if "wan" in joined:
-            label = "WanVideo"
-        elif "ltx" in joined:
-            label = "LTX Video"
+    # 1. Try to extract meaningful workflow name from workflow_json
+    label = None
+    if isinstance(workflow_json, dict):
+        extra = workflow_json.get("extra", {})
+        if isinstance(extra, dict):
+            for k in ("workflow_name", "title", "name"):
+                v = extra.get(k)
+                if isinstance(v, str) and len(v.strip()) > 1:
+                    label = v.strip()
+                    break
+        if not label:
+            nodes = workflow_json.get("nodes", [])
+            if isinstance(nodes, list):
+                for n in nodes:
+                    if not isinstance(n, dict):
+                        continue
+                    ctype = str(n.get("type", "")).lower()
+                    wv = n.get("widgets_values", [])
+                    if isinstance(wv, list) and wv and isinstance(wv[0], str):
+                        m = re.search(r"【(.*?)】", wv[0])
+                        if m and len(m.group(1).strip()) > 2:
+                            label = m.group(1).strip()
+                            break
+                    if "note" in ctype:
+                        t = str(n.get("title", "")).strip()
+                        if t and "note" not in t.lower() and len(t) > 3:
+                            label = t
+                            break
+
+    # 2. Heuristic fallback
+    if not label:
+        joined = " ".join(class_types).lower()
+        if "wanvideo" in joined or "vhs_videocombine" in joined or "savevideo" in joined:
+            if "wan" in joined:
+                label = "WanVideo"
+            elif "ltx" in joined:
+                label = "LTX Video"
+            else:
+                label = "Video Workflow"
+        elif "minimax" in joined:
+            label = "MiniMax Workflow"
+        elif "qwen" in joined and "tile" in joined:
+            label = "Qwen Tiled Upscale"
+        elif "flux" in joined:
+            label = "Flux Workflow"
+        elif "ultimatesdupscale" in joined or "imagedetailer" in joined or "facedetailer" in joined:
+            label = "Upscale / Detailer"
         else:
-            label = "Video Workflow"
-    elif "minimax" in joined:
-        label = "MiniMax Workflow"
-    elif "qwen" in joined and "tile" in joined:
-        label = "Qwen Tiled Upscale"
-    elif "flux" in joined:
-        label = "Flux Workflow"
-    elif "ultimatesdupscale" in joined or "imagedetailer" in joined or "facedetailer" in joined:
-        label = "Upscale / Detailer"
-    else:
-        label = f"Workflow ({len(class_types)} nodes)"
+            label = f"Workflow ({len(class_types)} nodes)"
     return wf_hash, label
 
 
@@ -639,7 +672,7 @@ def parse_comfy_metadata(
     all_prompts_text = "\n".join(p["text"] for p in prompts)
 
     recipe_hash = compute_recipe_hash(prompt_json)
-    workflow_hash, workflow_name = compute_workflow_fingerprint(prompt_json)
+    workflow_hash, workflow_name = compute_workflow_fingerprint(prompt_json, workflow_json)
 
     return {
         "prompts": prompts,
