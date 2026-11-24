@@ -494,27 +494,29 @@ export const PromptConverterModal: React.FC<Props> = ({
               ) : null}
             </div>
 
-            {/* Source prompt input */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-zinc-200 block">
+            {/* Source prompt input (auto-fills remaining modal height) */}
+            <div className={`flex flex-col gap-1.5 ${result ? "shrink-0" : "flex-1 min-h-[180px]"}`}>
+              <label className="text-xs font-semibold text-zinc-200 block shrink-0">
                 {t("3. 输入任意原始提示词或一句话想法", "3. Enter any source prompt or one-line idea")}
               </label>
               <textarea
                 value={sourceText}
                 onChange={(e) => setSourceText(e.target.value)}
-                rows={6}
+                rows={result ? 5 : undefined}
                 placeholder={t(
                   "粘贴任意资源提示词，或直接输入一句话（例如：雨夜东京便利店门口，撑着透明雨伞回头看镜头，霓虹灯反射在湿润的地面，电影感胶片色调）...",
                   "Paste any asset prompt or type a short idea (e.g., standing outside a Tokyo convenience store on a rainy night, holding a clear umbrella looking back at the camera, neon reflections on wet pavement, cinematic film look)..."
                 )}
-                className="w-full p-3.5 rounded-xl bg-[#0c0f17] border border-zinc-800 text-[13px] text-zinc-100 leading-relaxed focus:outline-none focus:border-indigo-500 resize-y"
+                className={`w-full p-3.5 rounded-xl bg-[#0c0f17] border border-zinc-800 text-[13px] text-zinc-100 leading-relaxed focus:outline-none focus:border-indigo-500 ${
+                  result ? "resize-y" : "flex-1 min-h-[160px] resize-none"
+                }`}
               />
             </div>
 
             {/* Result preview (if user chose preview mode) */}
             {result && (
-              <div className="p-3.5 rounded-xl bg-[#131826] border border-emerald-500/40 space-y-2.5">
-                <div className="flex items-center justify-between gap-2">
+              <div className="flex-1 min-h-[180px] flex flex-col p-3.5 rounded-xl bg-[#131826] border border-emerald-500/40 gap-2.5">
+                <div className="flex items-center justify-between gap-2 shrink-0">
                   <span className="text-xs font-semibold text-emerald-300 flex items-center gap-1.5">
                     <Sparkles className="w-3.5 h-3.5" />
                     {t("转换结果预览（", "Conversion Result Preview (")}
@@ -550,8 +552,7 @@ export const PromptConverterModal: React.FC<Props> = ({
                 <textarea
                   value={result.final_prompt}
                   onChange={(e) => setResult({ ...result, final_prompt: e.target.value })}
-                  rows={8}
-                  className="w-full p-3 rounded-lg bg-[#0b0e16] border border-zinc-800 text-xs text-zinc-100 leading-relaxed focus:outline-none focus:border-emerald-500 resize-y"
+                  className="flex-1 min-h-[120px] w-full p-3 rounded-lg bg-[#0b0e16] border border-zinc-800 text-xs text-zinc-100 leading-relaxed focus:outline-none focus:border-emerald-500 resize-none"
                 />
               </div>
             )}
