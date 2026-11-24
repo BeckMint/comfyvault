@@ -1,19 +1,22 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRight,
   BookmarkPlus,
   CheckCircle2,
   ExternalLink,
   FileCode2,
+  ImagePlus,
   Loader2,
   Lock,
   Pin,
   Search,
   Sparkles,
+  Trash2,
+  Upload,
   Wand2,
   X,
 } from "lucide-react";
-import { api } from "../api";
+import { api, formatBytes } from "../api";
 import { useI18n } from "../i18n";
 import type { WorkflowFileItem } from "../types";
 
@@ -66,6 +69,55 @@ export const PromptConverterModal: React.FC<Props> = ({
 }) => {
   const { t } = useI18n();
   const [sourceText, setSourceText] = useState(initialSourceText);
+  const [referenceImage, setReferenceImage] = useState<File | null>(null);
+  const [referencePreviewUrl, setReferencePreviewUrl] = useState<string | null>(null);
+  const [dragOverImage, setDragOverImage] = useState(false);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
+
+  const attachReferenceFile = (file: File | null) => {
+    if (!file) {
+      setReferenceImage(null);
+      return;
+    }
+    if (!file.type.startsWith("image/")) {
+      onToast(t("请上传图片文件（PNG / JPG / WebP 等）", "Please upload an image file (PNG, JPG, WebP, etc.)"), "err");
+      return;
+    }
+    setReferenceImage(file);
+  };
+
+  useEffect(() => {
+    if (!referenceImage) {
+      setReferencePreviewUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(referenceImage);
+    setReferencePreviewUrl(url);
+    return () => {
+      URL.revokeObjectURL(url);
+    };
+  }, [referenceImage]);
+
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (item.kind === "file" && item.type.startsWith("image/")) {
+          const file = item.getAsFile();
+          if (file) {
+            e.preventDefault();
+            attachReferenceFile(file);
+            onToast(t("已粘贴参考图，点击下方按钮即可由大模型反推提示词", "Reference image pasted! Click below to reverse-prompt."));
+            break;
+          }
+        }
+      }
+    };
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  }, []);
   const [provider, setProvider] = useState<"gemini" | "chatgpt">(() => {
     try {
       const saved = localStorage.getItem("comfyvault_converter_provider");
@@ -193,8 +245,11 @@ export const PromptConverterModal: React.FC<Props> = ({
   };
 
   const handleConvert = async (autoOpenWorkflow: boolean) => {
-    if (!sourceText.trim()) {
-      onToast(t("请先输入需要转换的提示词或一句话想法", "Please enter a prompt or a one-line idea to convert first"), "err");
+    if (!sourceText.trim() && !referenceImage) {
+      onToast(
+        t("请先输入提示词/一句话想法，或上传一张参考图进行反推", "Please enter a prompt/idea or upload a reference image first"),
+        "err"
+      );
       return;
     }
     if (!selectedWfPath) {
@@ -212,13 +267,14 @@ export const PromptConverterModal: React.FC<Props> = ({
         model_family: modelFamily || undefined,
         lang_pref: langPref,
         show_window: showWindow,
+        image: referenceImage,
       });
       setResult(res);
       if (autoOpenWorkflow) {
         onToast(
           t(
-            `已通过 ${provider.toUpperCase()} 完成转换并填入工作流！`,
-            `Converted with ${provider.toUpperCase()} and filled into workflow!`
+            `已通过 ${provider.toUpperCase()} 完成${referenceImage ? "看图反推" : "转换"}并填入工作流！`,
+            `${referenceImage ? "Reverse-prompted" : "Converted"} with ${provider.toUpperCase()} and filled into workflow!`
           )
         );
         onApplyToWorkflow({
@@ -228,7 +284,12 @@ export const PromptConverterModal: React.FC<Props> = ({
           text: res.final_prompt,
         });
       } else {
-        onToast(t(`已通过 ${provider.toUpperCase()} 完成提示词转换`, `Prompt converted with ${provider.toUpperCase()}`));
+        onToast(
+          t(
+            `已通过 ${provider.toUpperCase()} 完成${referenceImage ? "看图反推" : "提示词转换"}`,
+            `${referenceImage ? "Image reverse-prompted" : "Prompt converted"} with ${provider.toUpperCase()}`
+          )
+        );
       }
     } catch (e: any) {
       onToast(t(`转换失败: ${e.message}`, `Conversion failed: ${e.message}`), "err");
@@ -239,15 +300,16 @@ export const PromptConverterModal: React.FC<Props> = ({
 
   const handleSaveResultAsSnippet = async () => {
     if (!result) return;
-    const defaultTitle = `${result.model_family || t("AI转换", "AI Convert")} - ${sourceText.trim().slice(0, 18)}`;
+    const labelSeed = sourceText.trim() || referenceImage?.name || t("图片反推", "Image Reverse");
+    const defaultTitle = `${result.model_family || t("AI转换", "AI Convert")} - ${labelSeed.slice(0, 18)}`;
     try {
       await api.createSnippet({
         title: defaultTitle,
         category: result.has_divider ? t("服装场景", "Outfit & Scene") : t("正向", "Positive"),
         content: result.converted_part,
         notes: t(
-          `由 ${provider.toUpperCase()} 转换自：${sourceText.trim().slice(0, 80)}`,
-          `Converted by ${provider.toUpperCase()} from: ${sourceText.trim().slice(0, 80)}`
+          `由 ${provider.toUpperCase()} ${referenceImage ? "看图反推" : "转换"}自：${labelSeed.slice(0, 80)}`,
+          `${referenceImage ? "Reverse-prompted" : "Converted"} by ${provider.toUpperCase()} from: ${labelSeed.slice(0, 80)}`
         ),
       });
       onSavedSnippet?.();
@@ -270,8 +332,8 @@ export const PromptConverterModal: React.FC<Props> = ({
               </h2>
               <p className="text-[11px] text-zinc-400">
                 {t(
-                  "把任意资源提示词或一句话想法，按目标工作流模型自动转为段落化结构化提示词，并一键填回工作流创建弹窗",
-                  "Convert any asset prompt or one-line idea into a structured paragraph prompt tailored to your target workflow model and apply it with one click"
+                  "输入原始提示词/一句话想法，或上传参考图由大模型反推，按目标工作流模型转为结构化提示词并一键填入",
+                  "Enter a prompt/idea or upload a reference image for AI vision reverse-prompting, tailored to your target workflow model"
                 )}
               </p>
             </div>
@@ -494,21 +556,128 @@ export const PromptConverterModal: React.FC<Props> = ({
               ) : null}
             </div>
 
-            {/* Source prompt input (auto-fills remaining modal height) */}
-            <div className={`flex flex-col gap-1.5 ${result ? "shrink-0" : "flex-1 min-h-[180px]"}`}>
-              <label className="text-xs font-semibold text-zinc-200 block shrink-0">
-                {t("3. 输入任意原始提示词或一句话想法", "3. Enter any source prompt or one-line idea")}
-              </label>
+            {/* Source prompt & optional reference image input (auto-fills remaining modal height) */}
+            <div
+              className={`flex flex-col gap-2 rounded-xl transition-colors ${
+                result ? "shrink-0" : "flex-1 min-h-[210px]"
+              } ${dragOverImage ? "ring-2 ring-indigo-500/80 bg-indigo-500/5 p-1.5 -m-1.5" : ""}`}
+              onDragOver={(e) => {
+                e.preventDefault();
+                if (!dragOverImage) setDragOverImage(true);
+              }}
+              onDragLeave={(e) => {
+                e.preventDefault();
+                setDragOverImage(false);
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragOverImage(false);
+                const dropped = e.dataTransfer.files?.[0];
+                if (dropped) attachReferenceFile(dropped);
+              }}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2 shrink-0">
+                <label className="text-xs font-semibold text-zinc-200">
+                  {t("3. 输入提示词 或 上传参考图反推", "3. Enter Prompt or Upload Reference Image")}
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    ref={imageInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0] || null;
+                      if (f) attachReferenceFile(f);
+                      e.target.value = "";
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => imageInputRef.current?.click()}
+                    className="px-2.5 py-1 rounded-lg bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/40 text-[11px] font-medium text-indigo-200 flex items-center gap-1.5 transition-colors"
+                  >
+                    <ImagePlus className="w-3.5 h-3.5 text-indigo-300" />
+                    {referenceImage
+                      ? t("更换参考图", "Change Image")
+                      : t("上传参考图（可选）", "Upload Reference Image (Optional)")}
+                  </button>
+                  <span className="text-[10px] text-zinc-500 hidden sm:inline">
+                    {t("支持拖拽 / Ctrl+V 粘贴", "Drag & drop or Ctrl+V")}
+                  </span>
+                </div>
+              </div>
+
+              {/* Reference image preview bar (when attached) */}
+              {referenceImage && referencePreviewUrl ? (
+                <div className="shrink-0 flex items-center gap-3 p-2.5 rounded-xl bg-[#141926] border border-indigo-500/40">
+                  <img
+                    src={referencePreviewUrl}
+                    alt={referenceImage.name}
+                    className="h-16 w-16 rounded-lg object-cover border border-zinc-700 bg-black/40 shrink-0"
+                  />
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="px-1.5 py-0.5 rounded bg-indigo-500/20 border border-indigo-400/40 text-[10px] font-semibold text-indigo-200 shrink-0">
+                        {t("大模型看图反推模式", "Vision Reverse-Prompt Mode")}
+                      </span>
+                      <span className="text-xs text-zinc-200 truncate">{referenceImage.name}</span>
+                      <span className="text-[10px] text-zinc-500 shrink-0">{formatBytes(referenceImage.size)}</span>
+                    </div>
+                    <p className="text-[11px] text-zinc-400 leading-snug">
+                      {activeNode?.has_divider
+                        ? t(
+                            "将把此图传给网页版大模型分析反推，自动忽略五官与身材，仅保留发型、服装、姿势、构图、背景与光影并拼接到 ------ 下方。",
+                            "Image will be analyzed by the Web LLM while omitting facial features & body proportions, focusing on hair, outfit, pose, framing, setting & lighting below ------."
+                          )
+                        : t(
+                            "将把此图传给网页版大模型深度分析，按目标工作流模型反推为结构化段落提示词。",
+                            "Image will be analyzed by the Web LLM and reverse-engineered into a structured prompt for the target model."
+                          )}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => attachReferenceFile(null)}
+                    className="p-1.5 rounded-lg bg-zinc-800/80 hover:bg-rose-500/20 text-zinc-400 hover:text-rose-300 border border-zinc-700/80 shrink-0"
+                    title={t("移除参考图", "Remove image")}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => imageInputRef.current?.click()}
+                  className="shrink-0 w-full px-3 py-2 rounded-xl border border-dashed border-zinc-700/90 hover:border-indigo-500/60 bg-[#0d111b] hover:bg-indigo-500/5 text-[11px] text-zinc-400 hover:text-indigo-200 flex items-center justify-center gap-2 transition-colors"
+                >
+                  <Upload className="w-3.5 h-3.5 text-zinc-500" />
+                  <span>
+                    {t(
+                      "可选：点击上传、拖拽图片到此处，或直接 Ctrl+V 粘贴参考图进行大模型反推",
+                      "Optional: Click to upload, drag & drop an image here, or press Ctrl+V to paste a reference image for reverse-prompting"
+                    )}
+                  </span>
+                </button>
+              )}
+
               <textarea
                 value={sourceText}
                 onChange={(e) => setSourceText(e.target.value)}
-                rows={result ? 5 : undefined}
-                placeholder={t(
-                  "粘贴任意资源提示词，或直接输入一句话（例如：雨夜东京便利店门口，撑着透明雨伞回头看镜头，霓虹灯反射在湿润的地面，电影感胶片色调）...",
-                  "Paste any asset prompt or type a short idea (e.g., standing outside a Tokyo convenience store on a rainy night, holding a clear umbrella looking back at the camera, neon reflections on wet pavement, cinematic film look)..."
-                )}
+                rows={result ? 4 : undefined}
+                placeholder={
+                  referenceImage
+                    ? t(
+                        "（可选）补充微调要求，例如：保留构图与光影，把服装换成白色针织衫、背景改为黄昏海边... 留空则直接完整反推参考图",
+                        "(Optional) Add tweak instructions, e.g. keep the pose and lighting, change the outfit to a white knit sweater... Leave empty to reverse-prompt the image directly."
+                      )
+                    : t(
+                        "粘贴任意资源提示词，或直接输入一句话（例如：雨夜东京便利店门口，撑着透明雨伞回头看镜头，霓虹灯反射在湿润的地面，电影感胶片色调）...",
+                        "Paste any asset prompt or type a short idea (e.g., standing outside a Tokyo convenience store on a rainy night, holding a clear umbrella looking back at the camera, neon reflections on wet pavement, cinematic film look)..."
+                      )
+                }
                 className={`w-full p-3.5 rounded-xl bg-[#0c0f17] border border-zinc-800 text-[13px] text-zinc-100 leading-relaxed focus:outline-none focus:border-indigo-500 ${
-                  result ? "resize-y" : "flex-1 min-h-[160px] resize-none"
+                  result ? "resize-y" : "flex-1 min-h-[140px] resize-none"
                 }`}
               />
             </div>
@@ -565,10 +734,15 @@ export const PromptConverterModal: React.FC<Props> = ({
             {converting ? (
               <span className="text-amber-300 flex items-center gap-1.5">
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                {t(
-                  `正在调用 ${provider.toUpperCase()} 网页版生成结构化提示词（通常 10~30 秒）...`,
-                  `Calling ${provider.toUpperCase()} Web to generate structured prompt (usually 10–30s)...`
-                )}
+                {referenceImage
+                  ? t(
+                      `正在上传参考图并调用 ${provider.toUpperCase()} 网页版反推结构化提示词（通常 15~40 秒）...`,
+                      `Uploading image & calling ${provider.toUpperCase()} Web to reverse-prompt (usually 15–40s)...`
+                    )
+                  : t(
+                      `正在调用 ${provider.toUpperCase()} 网页版生成结构化提示词（通常 10~30 秒）...`,
+                      `Calling ${provider.toUpperCase()} Web to generate structured prompt (usually 10–30s)...`
+                    )}
               </span>
             ) : (
               t(
@@ -587,21 +761,27 @@ export const PromptConverterModal: React.FC<Props> = ({
             </button>
             <button
               type="button"
-              disabled={converting || !sourceText.trim() || !selectedWfPath}
+              disabled={converting || (!sourceText.trim() && !referenceImage) || !selectedWfPath}
               onClick={() => handleConvert(false)}
               className="px-4 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 disabled:opacity-40 text-xs font-semibold text-zinc-100 flex items-center gap-1.5"
             >
               <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-              {t("仅转换预览", "Convert & Preview")}
+              {referenceImage ? t("仅反推预览", "Reverse & Preview") : t("仅转换预览", "Convert & Preview")}
             </button>
             <button
               type="button"
-              disabled={converting || !sourceText.trim() || !selectedWfPath}
+              disabled={converting || (!sourceText.trim() && !referenceImage) || !selectedWfPath}
               onClick={() => handleConvert(true)}
               className="px-5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-xs font-semibold text-white flex items-center gap-1.5"
             >
               {converting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
-              {converting ? t("转换中...", "Converting...") : t("转换并填入工作流", "Convert & Fill Workflow")}
+              {converting
+                ? referenceImage
+                  ? t("反推中...", "Analyzing...")
+                  : t("转换中...", "Converting...")
+                : referenceImage
+                ? t("反推并填入工作流", "Reverse & Fill Workflow")
+                : t("转换并填入工作流", "Convert & Fill Workflow")}
             </button>
           </div>
         </div>

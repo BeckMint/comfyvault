@@ -1,10 +1,10 @@
 <div align="center">
 
-# ComfyVault `v0.1.16`
+# ComfyVault `v0.1.17`
 
 **面向 ComfyUI 的本地资产管理器、参数版本追踪器、工作流直连启动台与无损微调工作室**
 
-![Version](https://img.shields.io/badge/version-0.1.16-indigo) ![License](https://img.shields.io/badge/license-MIT-emerald)
+![Version](https://img.shields.io/badge/version-0.1.17-indigo) ![License](https://img.shields.io/badge/license-MIT-emerald)
 
 [English](README.md) · [简体中文](README_ZH.md)
 

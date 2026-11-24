@@ -248,7 +248,7 @@ export const api = {
       body: JSON.stringify({ path }),
     }),
 
-  convertPromptWithWebLLM: (payload: {
+  convertPromptWithWebLLM: async (payload: {
     source_text: string;
     provider: "gemini" | "chatgpt";
     workflow_path: string;
@@ -257,8 +257,9 @@ export const api = {
     model_family?: string;
     lang_pref?: "auto" | "en" | "zh";
     show_window?: boolean;
-  }) =>
-    req<{
+    image?: File | null;
+  }) => {
+    type ConvertRes = {
       ok: boolean;
       provider: string;
       model_family: string;
@@ -269,10 +270,29 @@ export const api = {
       workflow_path: string;
       target_node_id: string;
       target_input_key: string;
-    }>("/api/prompt-converter/convert", {
+    };
+    if (payload.image) {
+      const fd = new FormData();
+      fd.append("source_text", payload.source_text || "");
+      fd.append("provider", payload.provider);
+      fd.append("workflow_path", payload.workflow_path);
+      if (payload.target_node_id) fd.append("target_node_id", payload.target_node_id);
+      if (payload.target_input_key) fd.append("target_input_key", payload.target_input_key);
+      if (payload.model_family) fd.append("model_family", payload.model_family);
+      if (payload.lang_pref) fd.append("lang_pref", payload.lang_pref);
+      fd.append("show_window", payload.show_window ? "true" : "false");
+      fd.append("image", payload.image);
+      const res = await fetch("/api/prompt-converter/convert", { method: "POST", body: fd });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      return data as ConvertRes;
+    }
+    const { image: _unused, ...jsonPayload } = payload;
+    return req<ConvertRes>("/api/prompt-converter/convert", {
       method: "POST",
-      body: JSON.stringify(payload),
-    }),
+      body: JSON.stringify(jsonPayload),
+    });
+  },
 };
 
 export function formatBytes(bytes: number): string {

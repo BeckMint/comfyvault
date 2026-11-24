@@ -1,3 +1,5 @@
+import base64
+import mimetypes
 import os
 import re
 import threading
@@ -111,9 +113,11 @@ def build_conversion_instruction(
     model_family: Optional[str],
     has_divider: bool,
     lang_pref: str = "auto",
+    has_image: bool = False,
 ) -> str:
     guide = choose_model_guide(model_family)
     out_lang = choose_output_language(model_family, lang_pref)
+    src = (source_text or "").strip()
 
     if has_divider:
         constraint_block = (
@@ -134,11 +138,32 @@ def build_conversion_instruction(
             "Refer to the subject neutrally (e.g. 'the woman' / 'she' / '她') without re-describing her face or body."
         )
     else:
-        constraint_block = (
-            "MODE: General Full-Prompt Template.\n"
-            "Convert the user's input into a complete, production-ready, paragraph-structured prompt tailored to the target model, "
-            "preserving all key visual details and expanding brief ideas into vivid, cohesive cinematic descriptions."
+        if has_image:
+            constraint_block = (
+                "MODE: General Full-Prompt Image Reverse-Engineering.\n"
+                "Carefully analyze the attached reference image and reverse-engineer a complete, production-ready, "
+                "paragraph-structured prompt tailored to the target model. Accurately capture subject appearance, hairstyle, "
+                "wardrobe & fabric textures, pose & expression, camera angle & framing, background environment & props, "
+                "lighting direction, color palette, lens/film texture, and overall storytelling atmosphere."
+            )
+        else:
+            constraint_block = (
+                "MODE: General Full-Prompt Template.\n"
+                "Convert the user's input into a complete, production-ready, paragraph-structured prompt tailored to the target model, "
+                "preserving all key visual details and expanding brief ideas into vivid, cohesive cinematic descriptions."
+            )
+
+    if has_image:
+        task_block = (
+            "TASK: Reverse-engineer a structured generation prompt from the attached reference image.\n"
+            + (
+                f"ADDITIONAL USER INSTRUCTIONS / ADJUSTMENTS (apply these modifications on top of the image):\n{src}"
+                if src
+                else "Analyze every meaningful visual detail of the attached image and produce the prompt directly."
+            )
         )
+    else:
+        task_block = f"USER INPUT TO CONVERT:\n{src}"
 
     return (
         "You are an expert AI image/video prompt director.\n"
@@ -148,8 +173,7 @@ def build_conversion_instruction(
         "OUTPUT FORMAT RULES:\n"
         "- Output ONLY the converted prompt text wrapped strictly between <<<PROMPT_START>>> and <<<PROMPT_END>>>.\n"
         "- Do NOT include explanations, markdown headings, bullet lists, or extra commentary outside the markers.\n\n"
-        "USER INPUT TO CONVERT:\n"
-        f"{source_text.strip()}"
+        f"{task_block}"
     )
 
 
@@ -252,7 +276,166 @@ def open_login_browser_sync(provider: str) -> Dict[str, Any]:
     }
 
 
-def _fill_and_send(page: Any, editor: Any, text: str, send_selectors: List[str]) -> None:
+def _has_attachment_preview(page: Any, provider: str) -> bool:
+    selectors = (
+        [
+            "uploader-file-preview",
+            ".file-preview",
+            "xap-file-preview",
+            'img[src^="blob:"]',
+            'img[src^="data:image"]',
+            'button[aria-label*="Remove"]',
+            'button[aria-label*="移除"]',
+            'button[aria-label*="删除"]',
+        ]
+        if provider == "gemini"
+        else [
+            'img[src^="blob:"]',
+            'img[src^="data:image"]',
+            'button[aria-label*="Remove"]',
+            'button[aria-label*="移除"]',
+            'button[aria-label*="Delete"]',
+            '[data-testid*="attachment"]',
+            '[data-testid*="file-thumbnail"]',
+        ]
+    )
+    for sel in selectors:
+        try:
+            loc = page.locator(sel)
+            if loc.count() > 0:
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def _wait_for_attachment_preview(page: Any, provider: str, timeout_sec: float = 4.0) -> bool:
+    deadline = time.time() + timeout_sec
+    while time.time() < deadline:
+        if _has_attachment_preview(page, provider):
+            return True
+        time.sleep(0.25)
+    return False
+
+
+def _dispatch_paste_image(page: Any, editor: Any, image_path: str) -> None:
+    p = Path(image_path)
+    raw_bytes = p.read_bytes()
+    b64 = base64.b64encode(raw_bytes).decode("ascii")
+    mime, _ = mimetypes.guess_type(str(p))
+    if not mime or not mime.startswith("image/"):
+        mime = "image/png"
+    filename = p.name
+
+    editor.click()
+    time.sleep(0.2)
+    editor.evaluate(
+        """(el, payload) => {
+            const bin = atob(payload.b64);
+            const arr = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+            const file = new File([arr], payload.filename, { type: payload.mime });
+            const dt = new DataTransfer();
+            dt.items.add(file);
+            el.focus();
+            const ev = new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: dt });
+            el.dispatchEvent(ev);
+        }""",
+        {"b64": b64, "mime": mime, "filename": filename},
+    )
+
+
+def _attach_image_to_page(page: Any, editor: Any, image_path: str, provider: str) -> None:
+    """Attach a local image file to Gemini or ChatGPT web composer using resilient multi-strategy upload."""
+    p = Path(image_path)
+    if not p.exists() or not p.is_file():
+        raise FileNotFoundError(f"参考图片不存在: {image_path}")
+
+    attached = False
+
+    # Strategy 1: Direct <input type="file"> (works natively on ChatGPT and some Gemini views)
+    try:
+        file_inputs = page.locator('input[type="file"]')
+        if file_inputs.count() > 0:
+            file_inputs.first.set_input_files(str(p))
+            attached = _wait_for_attachment_preview(page, provider, timeout_sec=3.5)
+    except Exception:
+        pass
+
+    # Strategy 2: Synthetic ClipboardEvent paste directly into the composer editor (locale-independent)
+    if not attached:
+        try:
+            _dispatch_paste_image(page, editor, str(p))
+            attached = _wait_for_attachment_preview(page, provider, timeout_sec=4.0)
+        except Exception:
+            pass
+
+    # Strategy 3: Click upload / '+' button and handle native file chooser
+    if not attached:
+        upload_btn_selectors = [
+            'button[aria-label*="Open upload file menu"]',
+            'button[aria-label*="Upload"]',
+            'button[aria-label*="Add file"]',
+            'button[aria-label*="上传"]',
+            'button[aria-label*="添加文件"]',
+            'button[aria-label*="添加图片"]',
+            'button.upload-card-button',
+        ]
+        menu_item_selectors = [
+            'button:has-text("Upload files")',
+            'button:has-text("Upload image")',
+            'button:has-text("上传文件")',
+            'button:has-text("上传图片")',
+            '[role="menuitem"]:has-text("Upload")',
+            '[role="menuitem"]:has-text("上传")',
+        ]
+        for btn_sel in upload_btn_selectors:
+            try:
+                btn = page.locator(btn_sel).first
+                if btn.count() == 0 or not btn.is_visible():
+                    continue
+                try:
+                    with page.expect_file_chooser(timeout=2500) as fc_info:
+                        btn.click()
+                    fc_info.value.set_files(str(p))
+                    attached = _wait_for_attachment_preview(page, provider, timeout_sec=4.0)
+                    if attached:
+                        break
+                except Exception:
+                    # Clicking '+' may have opened a popover menu with "Upload files"
+                    for item_sel in menu_item_selectors:
+                        try:
+                            item = page.locator(item_sel).first
+                            if item.count() > 0 and item.is_visible():
+                                with page.expect_file_chooser(timeout=4000) as fc_info:
+                                    item.click()
+                                fc_info.value.set_files(str(p))
+                                attached = _wait_for_attachment_preview(page, provider, timeout_sec=4.0)
+                                if attached:
+                                    break
+                        except Exception:
+                            continue
+                    if attached:
+                        break
+            except Exception:
+                continue
+
+    if not attached:
+        raise RuntimeError(
+            f"未能将参考图片上传到 {provider.upper()} 网页端，请勾选「显示浏览器窗口」检查页面状态"
+        )
+
+    # Give the web client a moment to finish uploading the image blob before typing & sending
+    time.sleep(2.0)
+
+
+def _fill_and_send(
+    page: Any,
+    editor: Any,
+    text: str,
+    send_selectors: List[str],
+    has_image: bool = False,
+) -> None:
     editor.click()
     time.sleep(0.25)
     # Insert full multi-line text cleanly using keyboard.insert_text (avoids newline-submitting prematurely)
@@ -262,16 +445,20 @@ def _fill_and_send(page: Any, editor: Any, text: str, send_selectors: List[str])
     except Exception:
         pass
     page.keyboard.insert_text(text)
-    time.sleep(0.4)
+    time.sleep(0.5)
 
-    for sel in send_selectors:
-        try:
-            btn = page.locator(sel).first
-            if btn.count() > 0 and btn.is_visible() and btn.is_enabled():
-                btn.click()
-                return
-        except Exception:
-            continue
+    # When an image is attached, wait up to 12s for the upload to finish and the Send button to become enabled
+    wait_deadline = time.time() + (12.0 if has_image else 2.5)
+    while time.time() < wait_deadline:
+        for sel in send_selectors:
+            try:
+                btn = page.locator(sel).first
+                if btn.count() > 0 and btn.is_visible() and btn.is_enabled():
+                    btn.click()
+                    return
+            except Exception:
+                continue
+        time.sleep(0.35)
     page.keyboard.press("Enter")
 
 
@@ -327,8 +514,11 @@ def convert_via_web_llm_sync(
     provider: str,
     instruction_text: str,
     show_window: bool = False,
+    image_path: Optional[str] = None,
 ) -> str:
-    """Invoke Gemini or ChatGPT web UI using the persistent local browser profile."""
+    """Invoke Gemini or ChatGPT web UI using the persistent local browser profile.
+    Optionally attaches a local reference image for visual reverse-prompting.
+    """
     provider = (provider or "gemini").lower()
     if provider not in ("gemini", "chatgpt"):
         raise ValueError(f"不支持的引擎: {provider}")
@@ -379,6 +569,8 @@ def convert_via_web_llm_sync(
                     reply_sel = "model-response message-content, .model-response-text, message-content"
                     prev_cnt = page.locator(reply_sel).count()
                     editor = page.locator(editor_sel).first
+                    if image_path:
+                        _attach_image_to_page(page, editor, image_path, "gemini")
                     _fill_and_send(
                         page,
                         editor,
@@ -388,6 +580,7 @@ def convert_via_web_llm_sync(
                             'button[aria-label*="发送"]',
                             'button.send-button',
                         ],
+                        has_image=bool(image_path),
                     )
                     raw_reply = _wait_for_stable_reply(
                         page,
@@ -397,6 +590,7 @@ def convert_via_web_llm_sync(
                             'button[aria-label*="Stop"]',
                             'button[aria-label*="停止"]',
                         ],
+                        timeout_sec=110.0 if image_path else 95.0,
                     )
                     return extract_marked_prompt(raw_reply)
 
@@ -417,6 +611,8 @@ def convert_via_web_llm_sync(
                     reply_sel = '[data-message-author-role="assistant"]'
                     prev_cnt = page.locator(reply_sel).count()
                     editor = page.locator(editor_sel).first
+                    if image_path:
+                        _attach_image_to_page(page, editor, image_path, "chatgpt")
                     _fill_and_send(
                         page,
                         editor,
@@ -426,6 +622,7 @@ def convert_via_web_llm_sync(
                             'button[aria-label*="Send"]',
                             'button[aria-label*="发送"]',
                         ],
+                        has_image=bool(image_path),
                     )
                     raw_reply = _wait_for_stable_reply(
                         page,
@@ -436,6 +633,7 @@ def convert_via_web_llm_sync(
                             'button[aria-label*="Stop"]',
                             'button[aria-label*="停止"]',
                         ],
+                        timeout_sec=110.0 if image_path else 95.0,
                     )
                     return extract_marked_prompt(raw_reply)
             finally:
