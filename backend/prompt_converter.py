@@ -251,69 +251,72 @@ def _kill_profile_browsers() -> None:
         pass
 
 
-_active_login_proc: Optional[subprocess.Popen] = None
+def _has_profile_browsers() -> bool:
+    """Return True if any Edge/Chrome process bound to WEB_LLM_PROFILE_DIR is currently running (Windows)."""
+    if os.name != "nt":
+        return False
+    try:
+        r = subprocess.run(
+            [
+                "powershell.exe",
+                "-NoProfile",
+                "-Command",
+                "(Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*web_llm_profile*' -and ($_.Name -eq 'msedge.exe' -or $_.Name -eq 'chrome.exe') } | Measure-Object).Count",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        return int((r.stdout or "0").strip() or "0") > 0
+    except Exception:
+        return False
+
+
+_login_window_active = False
 
 
 def open_login_browser_sync(provider: str) -> Dict[str, Any]:
-    """Open a genuine, visible Edge/Chrome window bound to WEB_LLM_PROFILE_DIR so the user can sign in once."""
-    global _active_login_proc
+    """Open a genuine, visible Edge/Chrome window bound to WEB_LLM_PROFILE_DIR via Windows ShellExecuteW."""
+    global _login_window_active
     url = "https://gemini.google.com/app" if provider == "gemini" else "https://chatgpt.com/"
     WEB_LLM_PROFILE_DIR.mkdir(parents=True, exist_ok=True)
     browser_exe = _detect_browser_exe()
 
-    # If a previous login window is still open/stuck, close it cleanly so the user never gets permanently locked out
-    if _active_login_proc is not None and _active_login_proc.poll() is None:
-        try:
-            _active_login_proc.terminate()
-        except Exception:
-            pass
+    # If a previous login window is still open, close it cleanly so re-clicking always opens a fresh visible window
+    if _login_window_active:
         _kill_profile_browsers()
-        time.sleep(0.5)
+        time.sleep(0.6)
 
-    if _browser_lock.locked():
-        # If no active login proc is alive, another conversion is running
-        if _active_login_proc is None or _active_login_proc.poll() is not None:
-            return {"ok": False, "error": "当前正在执行 AI 转换任务，请稍候完成后再打开登录窗口"}
+    if _browser_lock.locked() and not _login_window_active:
+        return {"ok": False, "error": "当前正在执行 AI 转换任务，请稍候完成后再打开登录窗口"}
 
     def _run_login() -> None:
-        global _active_login_proc
-        if not _browser_lock.acquire(timeout=3):
+        global _login_window_active
+        if not _browser_lock.acquire(timeout=4):
             return
+        _login_window_active = True
         try:
-            if browser_exe:
-                # Launch genuine Edge/Chrome directly with explicit SW_SHOWNORMAL so:
-                # 1) It is ALWAYS visible in foreground (never hidden by parent SW_HIDE),
-                # 2) Google/OpenAI login never triggers automation security blocks,
-                # 3) Login cookies are persisted directly into WEB_LLM_PROFILE_DIR for Playwright!
-                si = None
-                creationflags = 0
-                if os.name == "nt":
-                    si = subprocess.STARTUPINFO()
-                    si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                    si.wShowWindow = 1  # SW_SHOWNORMAL
-                    creationflags = subprocess.CREATE_NEW_PROCESS_GROUP
-                proc = subprocess.Popen(
-                    [
-                        browser_exe,
-                        f"--user-data-dir={WEB_LLM_PROFILE_DIR}",
-                        "--no-first-run",
-                        "--no-default-browser-check",
-                        "--new-window",
-                        url,
-                    ],
-                    startupinfo=si,
-                    creationflags=creationflags,
+            if browser_exe and os.name == "nt":
+                import ctypes
+
+                # Use ShellExecuteW so Windows Shell launches Edge/Chrome visibly in foreground
+                # even when ComfyVault backend was started without a console window.
+                params = (
+                    f'--user-data-dir="{WEB_LLM_PROFILE_DIR}" '
+                    f'--no-first-run --no-default-browser-check --new-window "{url}"'
                 )
-                _active_login_proc = proc
-                try:
-                    proc.wait(timeout=900)
-                except subprocess.TimeoutExpired:
-                    try:
-                        proc.terminate()
-                    except Exception:
-                        pass
-                finally:
-                    _active_login_proc = None
+                rc = ctypes.windll.shell32.ShellExecuteW(None, "open", browser_exe, params, None, 1)
+                if rc <= 32:
+                    raise RuntimeError(f"ShellExecuteW failed with code {rc}")
+
+                # Wait briefly for Edge to spawn, then wait until the user closes it (up to 15 min)
+                time.sleep(2.0)
+                deadline = time.time() + 900
+                while time.time() < deadline:
+                    if not _has_profile_browsers():
+                        break
+                    time.sleep(1.5)
                 return
 
             # Fallback for non-Windows or missing system Edge/Chrome: use Playwright
@@ -351,7 +354,7 @@ def open_login_browser_sync(provider: str) -> Dict[str, Any]:
         except Exception as e:
             print(f"[PromptConverter] Login browser error: {e}")
         finally:
-            _active_login_proc = None
+            _login_window_active = False
             _browser_lock.release()
 
     t = threading.Thread(target=_run_login, daemon=True, name=f"web-llm-login-{provider}")
