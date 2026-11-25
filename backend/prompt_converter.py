@@ -130,7 +130,7 @@ def build_conversion_instruction(
     if has_divider:
         constraint_block = (
             "IMPORTANT MODE: LoRA Character-Locked Template (the workflow already prepends the LoRA character's fixed face & body trigger block before '------').\n"
-            "Goal: Re-create the reference scene/composition/photography while letting the LoRA character completely keep her own facial structure and body proportions.\n"
+            "Goal: Write a plain-text prompt describing the reference scene/composition/photography while letting the LoRA character completely keep her own facial structure and body proportions.\n"
             "STRICT EXCLUSIONS — YOU MUST COMPLETELY OMIT:\n"
             "1. Facial shape, facial features & identity (face shape, eyes, nose, lips, jawline, skin tone, ethnicity, age, beauty adjectives).\n"
             "2. Body type & body proportions (bust/chest size, waist, hips, height, build, slim/curvy/voluptuous descriptions).\n"
@@ -188,12 +188,15 @@ def build_conversion_instruction(
         task_block = f"USER INPUT TO CONVERT:\n{src}"
 
     return (
-        "You are an expert AI image/video prompt director.\n"
+        "CRITICAL: TEXT-ONLY RESPONSE. Do NOT generate, draw, edit, or render any image, and do NOT invoke any image-generation tool. "
+        "You must ONLY write a plain-text prompt.\n"
+        "You are an expert AI image/video prompt writer.\n"
         f"{guide}\n"
         f"Output language: {out_lang}.\n\n"
         f"{constraint_block}\n\n"
         "OUTPUT FORMAT RULES:\n"
         "- Treat this request independently from any earlier messages or images in this conversation.\n"
+        "- Do NOT generate or return any image — output TEXT ONLY.\n"
         "- Output ONLY the converted prompt text wrapped strictly between <<<PROMPT_START>>> and <<<PROMPT_END>>>.\n"
         "- Do NOT include explanations, markdown headings, bullet lists, or extra commentary outside the markers.\n\n"
         f"{task_block}"
