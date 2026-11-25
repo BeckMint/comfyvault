@@ -129,30 +129,32 @@ def build_conversion_instruction(
 
     if has_divider:
         constraint_block = (
-            "IMPORTANT MODE: Character-Locked Template (the workflow already prepends a fixed character identity trigger block before '------').\n"
+            "IMPORTANT MODE: LoRA Character-Locked Template (the workflow already prepends the LoRA character's fixed face & body trigger block before '------').\n"
+            "Goal: Re-create the reference scene/composition/photography while letting the LoRA character completely keep her own facial structure and body proportions.\n"
             "STRICT EXCLUSIONS — YOU MUST COMPLETELY OMIT:\n"
-            "1. Facial features & identity (face shape, eyes, nose, lips, skin tone, ethnicity, age, beauty adjectives).\n"
-            "2. Body type & proportions (bust/chest size, waist, hips, height, build, slim/curvy descriptions).\n"
-            "3. Aspect ratio, canvas orientation, or resolution (e.g. 9:16, 16:9, vertical portrait, 4K).\n"
-            "MUST PRESERVE & RICHLY DEVELOP:\n"
-            "- Hairstyle & hair texture/movement\n"
-            "- Clothing, fabric texture, styling & accessories\n"
-            "- Pose, body action, hand gestures & physical interaction\n"
-            "- Facial expression, gaze direction & emotional demeanor (without describing fixed facial bone structure)\n"
-            "- Camera framing, angle, lens depth & composition\n"
-            "- Background environment, props, spatial layering\n"
-            "- Lighting direction, shadow contrast, color palette & film texture\n"
-            "- Storytelling mood & narrative tension\n"
-            "Refer to the subject neutrally (e.g. 'the woman' / 'she' / '她') without re-describing her face or body."
+            "1. Facial shape, facial features & identity (face shape, eyes, nose, lips, jawline, skin tone, ethnicity, age, beauty adjectives).\n"
+            "2. Body type & body proportions (bust/chest size, waist, hips, height, build, slim/curvy/voluptuous descriptions).\n"
+            "MUST FAITHFULLY PRESERVE & RICHLY DEVELOP:\n"
+            "- Framing orientation & aspect ratio feel (e.g., vertical portrait framing, horizontal wide framing, square composition)\n"
+            "- Exact composition, shot scale, camera height/pitch/azimuth angle relative to the subject, and lens focal length/perspective\n"
+            "- Background environment, architectural/natural setting, props & spatial layering\n"
+            "- Storytelling narrative, emotional tension & cinematic atmosphere\n"
+            "- Subject action, body pose, limb placement, torso/head angle, hand gestures & physical interaction\n"
+            "- Facial expression, gaze direction & emotional demeanor (strictly without describing fixed facial bone structure)\n"
+            "- Hairstyle, hair texture/movement, clothing, fabric texture, styling & accessories\n"
+            "- Lighting direction, light quality, shadow contrast, color palette & highlights\n"
+            "- Photography style, lens focal length, depth of field, color grading, film grain & stylistic post-processing\n"
+            "Refer to the subject neutrally (e.g. 'the woman' / 'she' / '她') so the LoRA identity takes over the face and body seamlessly."
         )
     else:
         if has_image:
             constraint_block = (
-                "MODE: General Full-Prompt Image Reverse-Engineering.\n"
-                "Carefully analyze the attached reference image and reverse-engineer a complete, production-ready, "
-                "paragraph-structured prompt tailored to the target model. Accurately capture subject appearance, hairstyle, "
-                "wardrobe & fabric textures, pose & expression, camera angle & framing, background environment & props, "
-                "lighting direction, color palette, lens/film texture, and overall storytelling atmosphere."
+                "MODE: Full-Prompt Image Reverse-Engineering (Preserve Scene, Composition, Photography & Style; LoRA-Friendly Neutral Identity).\n"
+                "Carefully analyze the attached reference image and reverse-engineer a complete, production-ready, paragraph-structured prompt tailored to the target model.\n"
+                "Accurately capture: framing orientation & aspect ratio feel, exact composition & camera angle relative to the subject, lens focal length & perspective, "
+                "background environment & props, storytelling mood, subject pose/action/angle/expression/gaze, hairstyle & wardrobe/fabric details, "
+                "lighting direction & shadow contrast, photography style, color grading & post-processing treatment. "
+                "Keep facial bone structure and body proportions neutral so any applied character LoRA naturally retains its own face and figure."
             )
         else:
             constraint_block = (
@@ -163,14 +165,15 @@ def build_conversion_instruction(
 
     if has_image:
         camera_lock_block = (
-            "CAMERA GEOMETRY & COMPOSITION FIDELITY (HIGHEST PRIORITY — MUST BE ACCURATELY REVERSE-ENGINEERED AND STATED IN THE OPENING PARAGRAPH):\n"
-            "Do NOT default to generic 'eye-level 50mm' descriptions. Carefully measure and explicitly describe all spatial relationships between camera and subject:\n"
-            "1. Exact Shot Scale & Crop Boundaries: state precisely where the frame crops the subject (e.g., close-up, chest-up, waist-up, mid-thigh, knee-up, full-body with feet visible/cropped) and how much headroom or empty space surrounds them.\n"
-            "2. Camera Elevation & Vertical Pitch Relative to Subject: specify the exact camera height and tilt (e.g., ground-level worm's-eye looking sharply upward, low-angle from knee/waist level looking up, strict eye-level, slightly elevated high-angle looking down, steep overhead/top-down bird's-eye).\n"
-            "3. Horizontal Viewing Angle & Subject Orientation: explicitly separate (a) camera azimuth relative to the subject (dead-on frontal, 3/4 front-left or front-right, strict side profile, over-the-shoulder, 3/4 rear view looking back, full back view), (b) torso orientation, (c) head turn angle, and (d) exact eye-gaze direction (direct eye contact with lens vs looking off-frame left/right/up/down).\n"
-            "4. Subject Placement, Scale & Horizon: state where the subject sits in the frame (centered, left/right third, lower-left/upper-right, diagonal axis), approximate proportion of the frame occupied, horizon line height (low/mid/high), and any Dutch tilt / camera roll.\n"
-            "5. Lens Perspective & Foreshortening: accurately reflect wide-angle close-proximity perspective/foreshortening (e.g., 20-28mm with foreground limbs/props looming larger), natural 35-50mm, or telephoto 85-135mm background compression and depth-of-field falloff.\n"
-            "6. Depth Layering & Framing: note any immediate foreground occlusion/shoot-through elements (window frame, railing, foliage, table edge), leading lines, and how the background recedes behind the subject.\n"
+            "UNIFIED IMAGE REVERSE-PROMPTING FIDELITY RULES (APPLIES TO ALL ENGINES — HIGHEST PRIORITY, STATE IN OPENING PARAGRAPH):\n"
+            "Do NOT default to generic 'eye-level 50mm' descriptions. Faithfully reverse-engineer every photographic and compositional element from the reference image:\n"
+            "1. Framing Orientation, Aspect Ratio Feel & Crop Boundaries: explicitly state the framing proportion (e.g., vertical portrait framing, 4:5/2:3/9:16 vertical feel, horizontal widescreen/3:2 feel, square), exact shot scale (close-up, chest-up, waist-up, mid-thigh, knee-up, full-body with feet visible/cropped), and headroom/negative space.\n"
+            "2. Camera Elevation & Vertical Pitch Relative to Subject: specify exact camera height and tilt (ground-level worm's-eye looking sharply up, low-angle from knee/waist level looking up, strict eye-level, slightly elevated high-angle looking down, steep overhead/top-down bird's-eye).\n"
+            "3. Horizontal Viewing Angle & Subject Orientation: explicitly separate (a) camera azimuth relative to the subject (dead-on frontal, 3/4 front-left or front-right, strict side profile, over-the-shoulder, 3/4 rear view looking back, full back view), (b) torso orientation, (c) head turn angle, and (d) exact eye-gaze direction & facial expression.\n"
+            "4. Subject Placement, Scale & Horizon: state where the subject sits in the frame (centered, left/right third, lower-left/upper-right, diagonal axis), approximate frame occupancy, horizon line height (low/mid/high), and any Dutch tilt / camera roll.\n"
+            "5. Photography Style, Focal Length & Post-Processing: specify the photographic aesthetic (candid documentary, editorial fashion, vintage film, cinematic still, studio commercial, amateur snapshot), estimated lens focal length & perspective/foreshortening (wide 20-28mm vs natural 35-50mm vs telephoto 85-135mm), depth of field, lighting setup, color grading, film grain, contrast curve, and stylistic treatment.\n"
+            "6. Background, Depth Layering & Storytelling: describe immediate foreground occlusion/shoot-through elements, leading lines, background scene & props, and the overall narrative story & mood.\n"
+            "7. LoRA Character Preservation: NEVER describe the reference person's fixed facial bone structure/features or body proportions/bust/waist/hips, so the target LoRA character's own face and body proportions remain 100% intact.\n"
         )
         task_block = (
             f"{camera_lock_block}\n"

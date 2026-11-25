@@ -647,10 +647,10 @@ export const PromptConverterModal: React.FC<Props> = ({
                       {t("将自动保留 ", "Automatically preserves ")}
                       <code className="px-1 rounded bg-black/30">------</code>
                       {t(" 及其上方固定人物触发词，仅在下方生成", " and the fixed character trigger block above it, generating below only content ")}
-                      <strong>{t("不含人物五官、身材描述、画幅比例", "without facial features, body descriptions, or aspect ratio")}</strong>
+                      <strong>{t("不含人物脸型五官与身材比例", "without fixed facial features or body proportions")}</strong>
                       {t(
-                        "的内容，专注保留发型、服装、背景、构图、动作、神态姿势、光影色调与故事表现。",
-                        ", focusing on hairstyle, outfit, background, composition, action, expression/pose, lighting/color tone, and storytelling."
+                        "的内容，完整还原参考图的画幅比例、构图机位、背景场景、故事情节、动作姿势角度表情、服装发型、光影、焦段与摄影风格处理，保持 LoRA 人物自身五官与身材。",
+                        ", faithfully preserving framing/aspect ratio, camera angle & composition, background, story, pose/expression, wardrobe/hair, lighting, focal length & photography style while keeping the LoRA character's face and body."
                       )}
                     </div>
                   </div>
@@ -736,12 +736,12 @@ export const PromptConverterModal: React.FC<Props> = ({
                     <p className="text-[11px] text-zinc-400 leading-snug">
                       {activeNode?.has_divider
                         ? t(
-                            "将把此图传给网页版大模型分析反推，自动忽略五官与身材，仅保留发型、服装、姿势、构图、背景与光影并拼接到 ------ 下方。",
-                            "Image will be analyzed by the Web LLM while omitting facial features & body proportions, focusing on hair, outfit, pose, framing, setting & lighting below ------."
+                            "无论所选引擎，均会还原参考图的画幅比例、背景故事、动作姿势角度表情、构图机位、光影、焦段与摄影风格，同时忽略参考人物五官与身材以保持 LoRA 人物特征。",
+                            "Preserves aspect ratio, setting, story, pose/angle/expression, composition, lighting, focal length & photo style while omitting face & body proportions to retain LoRA identity."
                           )
                         : t(
-                            "将把此图传给网页版大模型深度分析，按目标工作流模型反推为结构化段落提示词。",
-                            "Image will be analyzed by the Web LLM and reverse-engineered into a structured prompt for the target model."
+                            "无论所选引擎，均会按参考图还原画幅比例、构图机位、背景故事、动作表情、光影焦段与摄影风格，并保持中性人物特征以便套用 LoRA。",
+                            "Reverses aspect ratio, composition, setting, story, pose/expression, lighting, focal length & photo style with neutral identity for seamless LoRA use."
                           )}
                     </p>
                   </div>
