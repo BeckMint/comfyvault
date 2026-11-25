@@ -158,12 +158,23 @@ def build_conversion_instruction(
             )
 
     if has_image:
+        camera_lock_block = (
+            "CAMERA GEOMETRY & COMPOSITION FIDELITY (HIGHEST PRIORITY — MUST BE ACCURATELY REVERSE-ENGINEERED AND STATED IN THE OPENING PARAGRAPH):\n"
+            "Do NOT default to generic 'eye-level 50mm' descriptions. Carefully measure and explicitly describe all spatial relationships between camera and subject:\n"
+            "1. Exact Shot Scale & Crop Boundaries: state precisely where the frame crops the subject (e.g., close-up, chest-up, waist-up, mid-thigh, knee-up, full-body with feet visible/cropped) and how much headroom or empty space surrounds them.\n"
+            "2. Camera Elevation & Vertical Pitch Relative to Subject: specify the exact camera height and tilt (e.g., ground-level worm's-eye looking sharply upward, low-angle from knee/waist level looking up, strict eye-level, slightly elevated high-angle looking down, steep overhead/top-down bird's-eye).\n"
+            "3. Horizontal Viewing Angle & Subject Orientation: explicitly separate (a) camera azimuth relative to the subject (dead-on frontal, 3/4 front-left or front-right, strict side profile, over-the-shoulder, 3/4 rear view looking back, full back view), (b) torso orientation, (c) head turn angle, and (d) exact eye-gaze direction (direct eye contact with lens vs looking off-frame left/right/up/down).\n"
+            "4. Subject Placement, Scale & Horizon: state where the subject sits in the frame (centered, left/right third, lower-left/upper-right, diagonal axis), approximate proportion of the frame occupied, horizon line height (low/mid/high), and any Dutch tilt / camera roll.\n"
+            "5. Lens Perspective & Foreshortening: accurately reflect wide-angle close-proximity perspective/foreshortening (e.g., 20-28mm with foreground limbs/props looming larger), natural 35-50mm, or telephoto 85-135mm background compression and depth-of-field falloff.\n"
+            "6. Depth Layering & Framing: note any immediate foreground occlusion/shoot-through elements (window frame, railing, foliage, table edge), leading lines, and how the background recedes behind the subject.\n"
+        )
         task_block = (
+            f"{camera_lock_block}\n"
             "TASK: Reverse-engineer a structured generation prompt from the attached reference image.\n"
             + (
                 f"ADDITIONAL USER INSTRUCTIONS / ADJUSTMENTS (apply these modifications on top of the image):\n{src}"
                 if src
-                else "Analyze every meaningful visual detail of the attached image and produce the prompt directly."
+                else "Analyze every meaningful visual detail of the attached image — starting with exact camera angle, perspective, and composition — and produce the prompt directly."
             )
         )
     else:
