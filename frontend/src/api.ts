@@ -208,12 +208,24 @@ export const api = {
       profile_dir: string;
       profile_initialized: boolean;
       busy: boolean;
+      login_open?: boolean;
+      stage?: string;
+      step?: number;
+      total_steps?: number;
+      message_zh?: string;
+      message_en?: string;
+      started_at?: number;
     }>("/api/prompt-converter/status"),
 
   openPromptConverterLogin: (provider: "gemini" | "chatgpt") =>
     req<{ ok: boolean; message?: string; error?: string }>("/api/prompt-converter/login", {
       method: "POST",
       body: JSON.stringify({ provider }),
+    }),
+
+  resetPromptConverterBrowser: () =>
+    req<{ ok: boolean; busy?: boolean; message?: string }>("/api/prompt-converter/reset", {
+      method: "POST",
     }),
 
   inspectWorkflowPrompt: (path: string) =>

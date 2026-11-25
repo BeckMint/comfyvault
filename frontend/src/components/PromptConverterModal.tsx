@@ -1,14 +1,17 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
+  AlertTriangle,
   ArrowRight,
   BookmarkPlus,
   CheckCircle2,
   ExternalLink,
+  Eye,
   FileCode2,
   ImagePlus,
   Loader2,
   Lock,
   Pin,
+  RotateCcw,
   Search,
   Sparkles,
   Trash2,
@@ -139,6 +142,29 @@ export const PromptConverterModal: React.FC<Props> = ({
   const [modelFamily, setModelFamily] = useState<string>("");
 
   const [converting, setConverting] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [lastAutoOpen, setLastAutoOpen] = useState<boolean>(true);
+  const [liveStatus, setLiveStatus] = useState<{
+    busy: boolean;
+    login_open: boolean;
+    stage: string;
+    step: number;
+    total_steps: number;
+    message_zh: string;
+    message_en: string;
+    started_at: number;
+  }>({
+    busy: false,
+    login_open: false,
+    stage: "idle",
+    step: 0,
+    total_steps: 5,
+    message_zh: "",
+    message_en: "",
+    started_at: 0,
+  });
+  const [nowSec, setNowSec] = useState<number>(() => Date.now() / 1000);
   const [result, setResult] = useState<{
     converted_part: string;
     final_prompt: string;
@@ -148,6 +174,34 @@ export const PromptConverterModal: React.FC<Props> = ({
     workflow_path: string;
     model_family: string;
   } | null>(null);
+
+  const pollStatus = () => {
+    api
+      .getPromptConverterStatus()
+      .then((s) => {
+        setProfileInitialized(s.profile_initialized);
+        setLiveStatus({
+          busy: Boolean(s.busy),
+          login_open: Boolean(s.login_open),
+          stage: s.stage || "idle",
+          step: s.step || 0,
+          total_steps: s.total_steps || 5,
+          message_zh: s.message_zh || "",
+          message_en: s.message_en || "",
+          started_at: s.started_at || 0,
+        });
+      })
+      .catch(() => {});
+  };
+
+  useEffect(() => {
+    pollStatus();
+    const timer = window.setInterval(() => {
+      setNowSec(Date.now() / 1000);
+      pollStatus();
+    }, converting || liveStatus.busy || liveStatus.login_open ? 1100 : 3500);
+    return () => window.clearInterval(timer);
+  }, [converting, liveStatus.busy, liveStatus.login_open]);
 
   const pinnedPaths = useMemo<Set<string>>(() => {
     try {
@@ -229,6 +283,7 @@ export const PromptConverterModal: React.FC<Props> = ({
   }, [files, wfSearch]);
 
   const handleOpenLogin = async (target: "gemini" | "chatgpt") => {
+    setErrorMsg(null);
     try {
       const res = await api.openPromptConverterLogin(target);
       onToast(
@@ -239,12 +294,34 @@ export const PromptConverterModal: React.FC<Props> = ({
           )
       );
       setProfileInitialized(true);
+      pollStatus();
     } catch (e: any) {
-      onToast(e.message || t("打开登录浏览器失败", "Failed to open login browser"), "err");
+      const msg = e.message || t("打开登录浏览器失败", "Failed to open login browser");
+      setErrorMsg(msg);
+      onToast(msg, "err");
     }
   };
 
-  const handleConvert = async (autoOpenWorkflow: boolean) => {
+  const handleResetBrowser = async (retryOpts?: { autoOpen: boolean; forceShowWindow?: boolean }) => {
+    setResetting(true);
+    try {
+      await api.resetPromptConverterBrowser();
+      setErrorMsg(null);
+      pollStatus();
+      if (retryOpts) {
+        if (retryOpts.forceShowWindow) setShowWindow(true);
+        await handleConvert(retryOpts.autoOpen, retryOpts.forceShowWindow ? true : undefined);
+      } else {
+        onToast(t("已关闭并重置独立浏览器进程，可以继续操作", "Browser reset. Ready to continue."));
+      }
+    } catch (e: any) {
+      onToast(t(`重置失败: ${e.message}`, `Reset failed: ${e.message}`), "err");
+    } finally {
+      setResetting(false);
+    }
+  };
+
+  const handleConvert = async (autoOpenWorkflow: boolean, overrideShowWindow?: boolean) => {
     if (!sourceText.trim() && !referenceImage) {
       onToast(
         t("请先输入提示词/一句话想法，或上传一张参考图进行反推", "Please enter a prompt/idea or upload a reference image first"),
@@ -256,7 +333,10 @@ export const PromptConverterModal: React.FC<Props> = ({
       onToast(t("请先选择一个目标工作流", "Please select a target workflow first"), "err");
       return;
     }
+    setLastAutoOpen(autoOpenWorkflow);
+    setErrorMsg(null);
     setConverting(true);
+    const effectiveShowWindow = overrideShowWindow !== undefined ? overrideShowWindow : showWindow;
     try {
       const res = await api.convertPromptWithWebLLM({
         source_text: sourceText.trim(),
@@ -266,10 +346,11 @@ export const PromptConverterModal: React.FC<Props> = ({
         target_input_key: activeNode?.input_key,
         model_family: modelFamily || undefined,
         lang_pref: langPref,
-        show_window: showWindow,
+        show_window: effectiveShowWindow,
         image: referenceImage,
       });
       setResult(res);
+      setErrorMsg(null);
       if (autoOpenWorkflow) {
         onToast(
           t(
@@ -292,9 +373,12 @@ export const PromptConverterModal: React.FC<Props> = ({
         );
       }
     } catch (e: any) {
-      onToast(t(`转换失败: ${e.message}`, `Conversion failed: ${e.message}`), "err");
+      const msg = e.message || t("未知错误", "Unknown error");
+      setErrorMsg(msg);
+      onToast(t(`转换失败: ${msg}`, `Conversion failed: ${msg}`), "err");
     } finally {
       setConverting(false);
+      pollStatus();
     }
   };
 
@@ -681,6 +765,145 @@ export const PromptConverterModal: React.FC<Props> = ({
                 }`}
               />
             </div>
+
+            {/* Persistent Login-Window-Open Banner */}
+            {liveStatus.login_open && !converting && (
+              <div className="shrink-0 p-3 rounded-xl bg-amber-500/12 border border-amber-500/45 flex flex-wrap items-center justify-between gap-2.5 text-xs">
+                <div className="flex items-start gap-2 min-w-0 flex-1">
+                  <ExternalLink className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                  <div className="space-y-0.5">
+                    <div className="font-semibold text-amber-200">
+                      {t("独立登录浏览器正在运行", "Standalone login browser is open")}
+                    </div>
+                    <div className="text-[11px] text-amber-200/80">
+                      {t(
+                        "请先在弹出的浏览器窗口中完成登录，然后关闭该窗口（或直接点右侧按钮结束并开始反推/转换）。",
+                        "Sign in inside the opened browser window, then close it (or click the button on the right once finished)."
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  disabled={resetting}
+                  onClick={() => handleResetBrowser()}
+                  className="px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/50 text-[11px] font-semibold text-amber-100 flex items-center gap-1.5 shrink-0"
+                >
+                  {resetting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                  {t("我已登录，关闭登录窗口", "Done Logging In (Close Window)")}
+                </button>
+              </div>
+            )}
+
+            {/* Live Progress Bar Card (while converting or background task busy) */}
+            {(converting || (liveStatus.busy && !liveStatus.login_open)) && (
+              <div className="shrink-0 p-3.5 rounded-xl bg-indigo-500/10 border border-indigo-500/45 space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-indigo-200">
+                    <Loader2 className="w-4 h-4 animate-spin text-indigo-400 shrink-0" />
+                    <span>
+                      {liveStatus.step > 0 && liveStatus.total_steps > 0
+                        ? `[${liveStatus.step}/${liveStatus.total_steps}] `
+                        : ""}
+                      {t(
+                        liveStatus.message_zh ||
+                          (referenceImage
+                            ? `正在上传参考图并调用 ${provider.toUpperCase()} 网页版反推...`
+                            : `正在调用 ${provider.toUpperCase()} 网页版生成提示词...`),
+                        liveStatus.message_en ||
+                          (referenceImage
+                            ? `Uploading image & calling ${provider.toUpperCase()} Web...`
+                            : `Calling ${provider.toUpperCase()} Web...`)
+                      )}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {liveStatus.started_at > 0 && (
+                      <span className="text-[11px] text-indigo-300/80 font-mono">
+                        {t(
+                          `已耗时 ${Math.max(0, Math.floor(nowSec - liveStatus.started_at))}s`,
+                          `${Math.max(0, Math.floor(nowSec - liveStatus.started_at))}s elapsed`
+                        )}
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      disabled={resetting}
+                      onClick={() => handleResetBrowser()}
+                      className="px-2 py-1 rounded-md bg-zinc-800/90 hover:bg-rose-500/20 border border-zinc-700 hover:border-rose-500/40 text-[11px] text-zinc-300 hover:text-rose-200 flex items-center gap-1"
+                      title={t("如果长时间无响应，可强制结束后台浏览器进程并重置", "Force-close background browser process if stuck")}
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      {t("强制重置", "Force Reset")}
+                    </button>
+                  </div>
+                </div>
+                <div className="w-full h-1.5 rounded-full bg-zinc-900 overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-indigo-500 via-violet-400 to-indigo-400 transition-all duration-500"
+                    style={{
+                      width: `${
+                        liveStatus.total_steps > 0 && liveStatus.step > 0
+                          ? Math.min(96, Math.max(12, Math.round((liveStatus.step / liveStatus.total_steps) * 100)))
+                          : 20
+                      }%`,
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Persistent Inline Error & 1-Click Recovery Card */}
+            {errorMsg && !converting && (
+              <div className="shrink-0 p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/45 space-y-2.5">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-start gap-2 min-w-0">
+                    <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                    <div className="space-y-0.5 min-w-0">
+                      <div className="text-xs font-semibold text-rose-200">
+                        {t("执行未完成，请按下方操作处理：", "Action did not complete — try one of the quick fixes below:")}
+                      </div>
+                      <div className="text-[12px] text-rose-200/90 break-words leading-relaxed">{errorMsg}</div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setErrorMsg(null)}
+                    className="p-1 rounded hover:bg-rose-500/20 text-rose-300/70 hover:text-rose-100 shrink-0"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 pl-6">
+                  <button
+                    type="button"
+                    disabled={resetting}
+                    onClick={() => handleResetBrowser({ autoOpen: lastAutoOpen })}
+                    className="px-3 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 border border-rose-400/50 text-[11px] font-semibold text-rose-100 flex items-center gap-1.5"
+                  >
+                    {resetting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
+                    {t("重置浏览器并立即重试", "Reset Browser & Retry Now")}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={resetting}
+                    onClick={() => handleResetBrowser({ autoOpen: lastAutoOpen, forceShowWindow: true })}
+                    className="px-3 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 text-[11px] font-medium text-zinc-100 flex items-center gap-1.5"
+                  >
+                    <Eye className="w-3.5 h-3.5 text-indigo-300" />
+                    {t("显示浏览器窗口重试（便于排查）", "Retry with Visible Browser")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenLogin(provider)}
+                    className="px-3 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-[11px] text-amber-300 flex items-center gap-1.5"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    {t(`重新登录 ${provider.toUpperCase()}`, `Re-login ${provider.toUpperCase()}`)}
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Result preview (if user chose preview mode) */}
             {result && (

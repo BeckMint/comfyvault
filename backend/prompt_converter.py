@@ -214,6 +214,36 @@ def _detect_browser_channel() -> Optional[str]:
     return None
 
 
+_login_window_active = False
+_progress: Dict[str, Any] = {
+    "stage": "idle",
+    "step": 0,
+    "total_steps": 5,
+    "message_zh": "",
+    "message_en": "",
+    "started_at": 0.0,
+}
+
+
+def _set_progress(
+    stage: str,
+    step: int = 0,
+    total_steps: int = 5,
+    message_zh: str = "",
+    message_en: str = "",
+    reset_timer: bool = False,
+) -> None:
+    _progress["stage"] = stage
+    _progress["step"] = step
+    _progress["total_steps"] = total_steps
+    _progress["message_zh"] = message_zh
+    _progress["message_en"] = message_en
+    if reset_timer:
+        _progress["started_at"] = time.time()
+    elif stage == "idle":
+        _progress["started_at"] = 0.0
+
+
 def get_converter_status() -> Dict[str, Any]:
     channel = _detect_browser_channel()
     profile_exists = WEB_LLM_PROFILE_DIR.exists() and any(WEB_LLM_PROFILE_DIR.iterdir())
@@ -228,6 +258,27 @@ def get_converter_status() -> Dict[str, Any]:
         "profile_dir": str(WEB_LLM_PROFILE_DIR),
         "profile_initialized": profile_exists,
         "busy": _browser_lock.locked(),
+        "login_open": _login_window_active,
+        "stage": _progress["stage"],
+        "step": _progress["step"],
+        "total_steps": _progress["total_steps"],
+        "message_zh": _progress["message_zh"],
+        "message_en": _progress["message_en"],
+        "started_at": _progress["started_at"],
+    }
+
+
+def reset_converter_browser_sync() -> Dict[str, Any]:
+    """Force-close any lingering login/automation browser bound to WEB_LLM_PROFILE_DIR and reset status."""
+    global _login_window_active
+    _kill_profile_browsers()
+    _login_window_active = False
+    _set_progress("idle")
+    time.sleep(0.4)
+    return {
+        "ok": True,
+        "busy": _browser_lock.locked(),
+        "message": "已关闭并重置本地独立浏览器进程，现在可以重新操作",
     }
 
 
@@ -251,8 +302,8 @@ def _kill_profile_browsers() -> None:
         pass
 
 
-def _has_profile_browsers() -> bool:
-    """Return True if any Edge/Chrome process bound to WEB_LLM_PROFILE_DIR is currently running (Windows)."""
+def _has_visible_profile_browsers() -> bool:
+    """Return True if any Edge/Chrome process bound to WEB_LLM_PROFILE_DIR still has an open window (Windows)."""
     if os.name != "nt":
         return False
     try:
@@ -261,7 +312,7 @@ def _has_profile_browsers() -> bool:
                 "powershell.exe",
                 "-NoProfile",
                 "-Command",
-                "(Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*web_llm_profile*' -and ($_.Name -eq 'msedge.exe' -or $_.Name -eq 'chrome.exe') } | Measure-Object).Count",
+                "$pids = (Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*web_llm_profile*' -and ($_.Name -eq 'msedge.exe' -or $_.Name -eq 'chrome.exe') }).ProcessId; if (-not $pids) { 0 } else { (Get-Process -Id $pids -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Measure-Object).Count }",
             ],
             capture_output=True,
             text=True,
@@ -271,9 +322,6 @@ def _has_profile_browsers() -> bool:
         return int((r.stdout or "0").strip() or "0") > 0
     except Exception:
         return False
-
-
-_login_window_active = False
 
 
 def open_login_browser_sync(provider: str) -> Dict[str, Any]:
@@ -296,26 +344,41 @@ def open_login_browser_sync(provider: str) -> Dict[str, Any]:
         if not _browser_lock.acquire(timeout=4):
             return
         _login_window_active = True
+        _set_progress(
+            "login_open",
+            0,
+            0,
+            f"登录浏览器已打开（{provider.upper()}），登录完成后关闭该窗口即可",
+            f"Login browser open ({provider.upper()}). Close the window after signing in.",
+            reset_timer=True,
+        )
         try:
             if browser_exe and os.name == "nt":
                 import ctypes
 
-                # Use ShellExecuteW so Windows Shell launches Edge/Chrome visibly in foreground
-                # even when ComfyVault backend was started without a console window.
+                # Disable Edge background mode / startup boost so closing the window exits cleanly
                 params = (
                     f'--user-data-dir="{WEB_LLM_PROFILE_DIR}" '
-                    f'--no-first-run --no-default-browser-check --new-window "{url}"'
+                    f'--no-first-run --no-default-browser-check --disable-background-mode '
+                    f'--disable-features=msEdgeStartupBoost --new-window "{url}"'
                 )
                 rc = ctypes.windll.shell32.ShellExecuteW(None, "open", browser_exe, params, None, 1)
                 if rc <= 32:
                     raise RuntimeError(f"ShellExecuteW failed with code {rc}")
 
-                # Wait briefly for Edge to spawn, then wait until the user closes it (up to 15 min)
-                time.sleep(2.0)
+                # Wait briefly for Edge window to appear, then release lock promptly once the user closes it
+                time.sleep(3.0)
                 deadline = time.time() + 900
+                closed_streak = 0
                 while time.time() < deadline:
-                    if not _has_profile_browsers():
-                        break
+                    if not _has_visible_profile_browsers():
+                        closed_streak += 1
+                        if closed_streak >= 2:
+                            # Clean up any lingering Edge background helper so Playwright can use the profile immediately
+                            _kill_profile_browsers()
+                            break
+                    else:
+                        closed_streak = 0
                     time.sleep(1.5)
                 return
 
@@ -355,6 +418,7 @@ def open_login_browser_sync(provider: str) -> Dict[str, Any]:
             print(f"[PromptConverter] Login browser error: {e}")
         finally:
             _login_window_active = False
+            _set_progress("idle")
             _browser_lock.release()
 
     t = threading.Thread(target=_run_login, daemon=True, name=f"web-llm-login-{provider}")
@@ -682,17 +746,38 @@ def convert_via_web_llm_sync(
 
     WEB_LLM_PROFILE_DIR.mkdir(parents=True, exist_ok=True)
     channel = _detect_browser_channel()
+    label = "GEMINI" if provider == "gemini" else "CHATGPT"
+    total_steps = 5 if image_path else 4
 
-    if not _browser_lock.acquire(timeout=3):
-        raise RuntimeError("当前已有浏览器任务正在执行，请稍候或先关闭登录窗口")
+    # If a login window was open/lingering when the user starts converting, close it automatically so they are never stuck!
+    if _login_window_active:
+        _kill_profile_browsers()
+        time.sleep(0.6)
+
+    if not _browser_lock.acquire(timeout=5):
+        raise RuntimeError("当前已有浏览器任务正在执行，请稍候完成或点击「重置浏览器并重试」")
 
     try:
         from playwright.sync_api import sync_playwright
+
+        _set_progress(
+            "launching",
+            1,
+            total_steps,
+            f"正在启动本地独立浏览器（复用 {label} 登录态）...",
+            f"Launching local browser (reusing {label} session)...",
+            reset_timer=True,
+        )
+
+        # Ensure no stray background Edge process holds a lock on WEB_LLM_PROFILE_DIR
+        _kill_profile_browsers()
 
         args = [
             "--disable-blink-features=AutomationControlled",
             "--no-first-run",
             "--no-default-browser-check",
+            "--disable-background-mode",
+            "--disable-features=msEdgeStartupBoost",
         ]
         if not show_window:
             args.append("--start-minimized")
@@ -712,22 +797,43 @@ def convert_via_web_llm_sync(
                 page = ctx.pages[0] if ctx.pages else ctx.new_page()
 
                 if provider == "gemini":
+                    _set_progress(
+                        "navigating",
+                        2,
+                        total_steps,
+                        "正在打开 Gemini 网页版并检测登录状态...",
+                        "Opening Gemini Web and checking login state...",
+                    )
                     page.goto("https://gemini.google.com/app", wait_until="domcontentloaded", timeout=30000)
                     time.sleep(2.0)
                     if "accounts.google.com" in (page.url or "").lower():
-                        raise RuntimeError("Gemini 尚未登录，请先点击「登录 Gemini」在弹出浏览器中完成一次登录")
+                        raise RuntimeError("Gemini 尚未登录，请先点击「检查/重新登录 GEMINI」完成一次登录")
 
                     editor_sel = 'div.ql-editor[contenteditable="true"], rich-textarea [contenteditable="true"], textarea'
                     try:
                         page.wait_for_selector(editor_sel, timeout=18000)
                     except Exception:
-                        raise RuntimeError("未检测到 Gemini 输入框（可能尚未登录或需人机验证），请先点击「登录 Gemini」检查")
+                        raise RuntimeError("未检测到 Gemini 输入框（可能尚未登录或需人机验证），请先点击「检查/重新登录 GEMINI」检查")
 
                     reply_sel = "model-response message-content, .model-response-text, message-content"
                     prev_cnt = page.locator(reply_sel).count()
                     editor = page.locator(editor_sel).first
                     if image_path:
+                        _set_progress(
+                            "uploading_image",
+                            3,
+                            total_steps,
+                            "正在向 Gemini 上传参考图片...",
+                            "Uploading reference image to Gemini...",
+                        )
                         _attach_image_to_page(page, editor, image_path, "gemini")
+                    _set_progress(
+                        "sending",
+                        4 if image_path else 3,
+                        total_steps,
+                        "正在向 Gemini 发送结构化反推指令..." if image_path else "正在向 Gemini 发送转换指令...",
+                        "Sending reverse-prompt instruction to Gemini..." if image_path else "Sending prompt instruction to Gemini...",
+                    )
                     _fill_and_send(
                         page,
                         editor,
@@ -738,6 +844,13 @@ def convert_via_web_llm_sync(
                             'button.send-button',
                         ],
                         has_image=bool(image_path),
+                    )
+                    _set_progress(
+                        "waiting_reply",
+                        total_steps,
+                        total_steps,
+                        "正在等待 Gemini 分析并返回结构化提示词...",
+                        "Waiting for Gemini to analyze and return structured prompt...",
                     )
                     raw_reply = _wait_for_stable_reply(
                         page,
@@ -753,23 +866,44 @@ def convert_via_web_llm_sync(
 
                 else:
                     # ChatGPT
+                    _set_progress(
+                        "navigating",
+                        2,
+                        total_steps,
+                        "正在打开 ChatGPT 网页版并检测登录状态...",
+                        "Opening ChatGPT Web and checking login state...",
+                    )
                     page.goto("https://chatgpt.com/", wait_until="domcontentloaded", timeout=30000)
                     time.sleep(2.5)
                     url_low = (page.url or "").lower()
                     if "auth" in url_low or "login" in url_low:
-                        raise RuntimeError("ChatGPT 尚未登录，请先点击「登录 ChatGPT」在弹出浏览器中完成一次登录")
+                        raise RuntimeError("ChatGPT 尚未登录，请先点击「检查/重新登录 CHATGPT」完成一次登录")
 
                     editor_sel = '#prompt-textarea, div[contenteditable="true"][id="prompt-textarea"], textarea[name="prompt-textarea"]'
                     try:
                         page.wait_for_selector(editor_sel, timeout=20000)
                     except Exception:
-                        raise RuntimeError("未检测到 ChatGPT 输入框（可能尚未登录或触发了验证），请先点击「登录 ChatGPT」检查")
+                        raise RuntimeError("未检测到 ChatGPT 输入框（可能尚未登录或触发了验证），请先点击「检查/重新登录 CHATGPT」检查")
 
                     reply_sel = '[data-message-author-role="assistant"]'
                     prev_cnt = page.locator(reply_sel).count()
                     editor = page.locator(editor_sel).first
                     if image_path:
+                        _set_progress(
+                            "uploading_image",
+                            3,
+                            total_steps,
+                            "正在向 ChatGPT 上传参考图片...",
+                            "Uploading reference image to ChatGPT...",
+                        )
                         _attach_image_to_page(page, editor, image_path, "chatgpt")
+                    _set_progress(
+                        "sending",
+                        4 if image_path else 3,
+                        total_steps,
+                        "正在向 ChatGPT 发送结构化反推指令..." if image_path else "正在向 ChatGPT 发送转换指令...",
+                        "Sending reverse-prompt instruction to ChatGPT..." if image_path else "Sending prompt instruction to ChatGPT...",
+                    )
                     _fill_and_send(
                         page,
                         editor,
@@ -780,6 +914,13 @@ def convert_via_web_llm_sync(
                             'button[aria-label*="发送"]',
                         ],
                         has_image=bool(image_path),
+                    )
+                    _set_progress(
+                        "waiting_reply",
+                        total_steps,
+                        total_steps,
+                        "正在等待 ChatGPT 分析并返回结构化提示词...",
+                        "Waiting for ChatGPT to analyze and return structured prompt...",
                     )
                     raw_reply = _wait_for_stable_reply(
                         page,
@@ -799,4 +940,5 @@ def convert_via_web_llm_sync(
                 except Exception:
                     pass
     finally:
+        _set_progress("idle")
         _browser_lock.release()

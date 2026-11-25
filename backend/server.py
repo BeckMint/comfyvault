@@ -966,6 +966,12 @@ class VaultApp:
         status = 200 if res.get("ok") else 400
         return web.json_response(res, status=status)
 
+    async def handle_prompt_converter_reset(self, request: web.Request) -> web.Response:
+        from .prompt_converter import reset_converter_browser_sync
+
+        res = await asyncio.to_thread(reset_converter_browser_sync)
+        return web.json_response(res)
+
     async def handle_prompt_converter_inspect_workflow(self, request: web.Request) -> web.Response:
         body = await request.json()
         raw_path = (body.get("path") or "").strip()
@@ -1450,6 +1456,7 @@ class VaultApp:
         app.router.add_delete("/api/snippets/{id:\\d+}", self.handle_delete_snippet)
         app.router.add_get("/api/prompt-converter/status", self.handle_prompt_converter_status)
         app.router.add_post("/api/prompt-converter/login", self.handle_prompt_converter_login)
+        app.router.add_post("/api/prompt-converter/reset", self.handle_prompt_converter_reset)
         app.router.add_post("/api/prompt-converter/inspect-workflow", self.handle_prompt_converter_inspect_workflow)
         app.router.add_post("/api/prompt-converter/convert", self.handle_prompt_converter_convert)
         app.router.add_get("/api/thumbs/{name}", self.handle_thumb)
