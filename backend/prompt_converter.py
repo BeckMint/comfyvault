@@ -2,14 +2,18 @@ import base64
 import json
 import mimetypes
 import os
+import random
 import re
 import subprocess
 import threading
 import time
+import urllib.error
+import urllib.request
+import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from .config import DATA_DIR
+from .config import COMFY_HTTP_URL, COMFY_ROOT, DATA_DIR
 
 WEB_LLM_PROFILE_DIR = DATA_DIR / "web_llm_profile"
 WEB_LLM_SESSIONS_FILE = DATA_DIR / "web_llm_sessions.json"
@@ -193,6 +197,15 @@ def build_conversion_instruction(
     )
 
 
+def _clean_prompt_artifacts(text: str) -> str:
+    """Remove accidental placeholder divider lines (e.g. 'Character-Locked Template: ... ------') echoed by smaller VLMs."""
+    cleaned = text.strip()
+    lines = cleaned.splitlines()
+    if lines and ("------" in lines[0] or "identity trigger block" in lines[0].lower() or "character-locked template" in lines[0].lower()):
+        cleaned = "\n".join(lines[1:]).lstrip()
+    return cleaned
+
+
 def extract_marked_prompt(raw_text: str) -> str:
     if not raw_text:
         return ""
@@ -200,15 +213,15 @@ def extract_marked_prompt(raw_text: str) -> str:
     # Filter out the instruction echo ("and" / tiny placeholders) and pick the last real generated prompt
     valid = [m.strip() for m in matches if len(m.strip()) >= 20 and m.strip().lower() != "and"]
     if valid:
-        return valid[-1]
+        return _clean_prompt_artifacts(valid[-1])
     if matches:
-        return matches[-1].strip()
+        return _clean_prompt_artifacts(matches[-1].strip())
     # Fallback: strip common markdown code fences
     cleaned = raw_text.strip()
     if cleaned.startswith("```"):
         cleaned = re.sub(r"^```[a-zA-Z]*\s*", "", cleaned)
         cleaned = re.sub(r"\s*```$", "", cleaned)
-    return cleaned.strip()
+    return _clean_prompt_artifacts(cleaned)
 
 
 def _detect_browser_exe() -> Optional[str]:
@@ -266,6 +279,7 @@ def _set_progress(
 def get_converter_status() -> Dict[str, Any]:
     channel = _detect_browser_channel()
     profile_exists = WEB_LLM_PROFILE_DIR.exists() and any(WEB_LLM_PROFILE_DIR.iterdir())
+    local_qwenvl_ok = (COMFY_ROOT / "custom_nodes" / "ComfyUI-QwenVL-Mod").exists()
     try:
         import playwright  # noqa: F401
         pw_ok = True
@@ -276,6 +290,7 @@ def get_converter_status() -> Dict[str, Any]:
         "browser_channel": channel,
         "profile_dir": str(WEB_LLM_PROFILE_DIR),
         "profile_initialized": profile_exists,
+        "local_qwenvl_available": local_qwenvl_ok,
         "busy": _browser_lock.locked(),
         "login_open": _login_window_active,
         "stage": _progress["stage"],
@@ -884,6 +899,203 @@ def _wait_for_stable_reply(
     if last_text:
         return last_text
     raise TimeoutError("等待网页版回复超时，请检查是否需要重新登录或存在验证提示")
+
+
+def _http_json(url: str, payload: Optional[Dict[str, Any]] = None, timeout: float = 15.0) -> Any:
+    data = json.dumps(payload).encode("utf-8") if payload is not None else None
+    headers = {"Content-Type": "application/json"} if payload is not None else {}
+    req = urllib.request.Request(url, data=data, headers=headers, method="POST" if payload is not None else "GET")
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return json.loads(resp.read().decode("utf-8", errors="ignore"))
+
+
+def _upload_image_to_comfy(image_path: str) -> str:
+    """Upload a local image to ComfyUI /upload/image and return the LoadImage reference string."""
+    p = Path(image_path)
+    raw = p.read_bytes()
+    mime, _ = mimetypes.guess_type(str(p))
+    if not mime or not mime.startswith("image/"):
+        mime = "image/png"
+    boundary = f"----ComfyVaultVLM{uuid.uuid4().hex}"
+    filename = f"cv_vlm_{uuid.uuid4().hex[:10]}{p.suffix.lower() or '.png'}"
+    parts = [
+        f"--{boundary}\r\n".encode("utf-8"),
+        f'Content-Disposition: form-data; name="image"; filename="{filename}"\r\n'.encode("utf-8"),
+        f"Content-Type: {mime}\r\n\r\n".encode("utf-8"),
+        raw,
+        b"\r\n",
+        f"--{boundary}\r\n".encode("utf-8"),
+        b'Content-Disposition: form-data; name="overwrite"\r\n\r\ntrue\r\n',
+        f"--{boundary}--\r\n".encode("utf-8"),
+    ]
+    body = b"".join(parts)
+    req = urllib.request.Request(
+        f"{COMFY_HTTP_URL}/upload/image",
+        data=body,
+        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=20) as resp:
+        res = json.loads(resp.read().decode("utf-8", errors="ignore"))
+    name = res.get("name") or filename
+    sub = (res.get("subfolder") or "").strip("/\\")
+    return f"{sub}/{name}" if sub else name
+
+
+def convert_via_local_qwenvl_sync(
+    instruction_text: str,
+    image_path: Optional[str] = None,
+) -> str:
+    """Run local Qwen3-VL (ComfyUI-QwenVL-Mod) directly through ComfyUI API — 100% offline, zero cloud censorship."""
+    total_steps = 4 if image_path else 3
+    if not _browser_lock.acquire(timeout=5):
+        raise RuntimeError("当前已有转换任务正在执行，请稍候完成后再试")
+
+    try:
+        _set_progress(
+            "launching",
+            1,
+            total_steps,
+            "正在连接本地 ComfyUI 并检查 Qwen3-VL 节点...",
+            "Connecting to local ComfyUI & checking Qwen3-VL node...",
+            reset_timer=True,
+        )
+
+        try:
+            obj_info = _http_json(f"{COMFY_HTTP_URL}/object_info/AILab_QwenVL_Advanced", timeout=8)
+        except Exception as e:
+            raise RuntimeError(f"无法连接本地 ComfyUI（{COMFY_HTTP_URL}），请先启动 ComfyUI 后再使用本地 Qwen3-VL：{e}")
+
+        node_meta = obj_info.get("AILab_QwenVL_Advanced") if isinstance(obj_info, dict) else None
+        if not node_meta:
+            raise RuntimeError("当前 ComfyUI 未加载 AILab_QwenVL_Advanced 节点，请确认已安装 ComfyUI-QwenVL-Mod")
+
+        req_defs = (node_meta.get("input") or {}).get("required") or {}
+        model_choices = (req_defs.get("model_name") or [[]])[0]
+        if isinstance(model_choices, list) and "Qwen3-VL-4B-Instruct-Abliterated" in model_choices:
+            chosen_model = "Qwen3-VL-4B-Instruct-Abliterated"
+        elif isinstance(model_choices, list) and model_choices:
+            chosen_model = model_choices[0]
+        else:
+            chosen_model = "Qwen3-VL-4B-Instruct-Abliterated"
+
+        preset_choices = (req_defs.get("preset_prompt") or [[]])[0]
+        chosen_preset = preset_choices[0] if isinstance(preset_choices, list) and preset_choices else "🖼️ Detailed Description"
+
+        # Build minimal ComfyUI API graph
+        graph: Dict[str, Any] = {}
+        if image_path:
+            _set_progress(
+                "uploading_image",
+                2,
+                total_steps,
+                "正在上传参考图到本地 ComfyUI...",
+                "Uploading reference image to local ComfyUI...",
+            )
+            img_ref = _upload_image_to_comfy(image_path)
+            graph["1"] = {
+                "class_type": "LoadImage",
+                "inputs": {"image": img_ref},
+            }
+
+        # Prefix with [PORTRAIT_STRICT_ANALYSIS] so AILab_QwenVL uses ONLY our exact instruction without appending preset_prompt!
+        qwen_inputs: Dict[str, Any] = {
+            "model_name": chosen_model,
+            "attention_mode": "auto",
+            "use_torch_compile": False,
+            "device": "auto",
+            "preset_prompt": chosen_preset,
+            "custom_prompt": f"[PORTRAIT_STRICT_ANALYSIS]\n{instruction_text}",
+            "max_tokens": 1536,
+            "temperature": 0.45,
+            "top_p": 0.9,
+            "num_beams": 1,
+            "repetition_penalty": 1.15,
+            "frame_count": 1,
+            "keep_model_loaded": False,
+            "seed": random.randint(2, 2_000_000_000),
+            "keep_last_prompt": False,
+        }
+        if image_path:
+            qwen_inputs["image"] = ["1", 0]
+
+        graph["2"] = {
+            "class_type": "AILab_QwenVL_Advanced",
+            "inputs": qwen_inputs,
+        }
+        graph["3"] = {
+            "class_type": "PreviewAny",
+            "inputs": {"source": ["2", 0]},
+        }
+
+        _set_progress(
+            "waiting_reply",
+            total_steps - 1 if image_path else 2,
+            total_steps,
+            f"正在使用本地 {chosen_model} 看图反推（首次加载约 10~25 秒，完成后自动释放显存）..."
+            if image_path
+            else f"正在使用本地 {chosen_model} 生成结构化提示词...",
+            f"Running local {chosen_model} inference (auto-unloads VRAM when done)...",
+        )
+
+        client_id = f"comfyvault_vlm_{uuid.uuid4().hex[:10]}"
+        try:
+            queued = _http_json(
+                f"{COMFY_HTTP_URL}/prompt",
+                payload={"prompt": graph, "client_id": client_id},
+                timeout=15,
+            )
+        except urllib.error.HTTPError as he:
+            detail = he.read().decode("utf-8", errors="ignore")[:300]
+            raise RuntimeError(f"提交本地 Qwen3-VL 节点失败: {detail}")
+
+        prompt_id = queued.get("prompt_id")
+        if not prompt_id:
+            raise RuntimeError(f"ComfyUI 未返回 prompt_id: {queued}")
+
+        # Poll /history/{prompt_id} until finished
+        deadline = time.time() + 180.0
+        raw_text = ""
+        while time.time() < deadline:
+            try:
+                hist = _http_json(f"{COMFY_HTTP_URL}/history/{prompt_id}", timeout=8)
+                if isinstance(hist, dict) and prompt_id in hist:
+                    entry = hist[prompt_id]
+                    status = entry.get("status") or {}
+                    if status.get("status_str") == "error":
+                        msgs = status.get("messages") or []
+                        raise RuntimeError(f"本地 Qwen3-VL 节点执行出错: {str(msgs)[:300]}")
+                    outputs = entry.get("outputs") or {}
+                    out3 = outputs.get("3") or {}
+                    txt_val = out3.get("text")
+                    if isinstance(txt_val, list) and txt_val:
+                        raw_text = "\n".join(str(x) for x in txt_val if x is not None).strip()
+                    elif isinstance(txt_val, str):
+                        raw_text = txt_val.strip()
+                    if raw_text or status.get("completed"):
+                        break
+            except RuntimeError:
+                raise
+            except Exception:
+                pass
+            time.sleep(0.6)
+
+        if not raw_text:
+            raise TimeoutError("等待本地 Qwen3-VL 推理超时，请检查 ComfyUI 控制台日志")
+
+        _set_progress(
+            "waiting_reply",
+            total_steps,
+            total_steps,
+            "已完成本地反推，正在整理结构化提示词...",
+            "Local inference finished, formatting prompt...",
+        )
+        # Strip any <think>...</think> reasoning block if present
+        raw_text = re.sub(r"<think>.*?</think>", "", raw_text, flags=re.DOTALL).strip()
+        return extract_marked_prompt(raw_text)
+    finally:
+        _set_progress("idle")
+        _browser_lock.release()
 
 
 def convert_via_web_llm_sync(

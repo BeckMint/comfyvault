@@ -207,6 +207,7 @@ export const api = {
       browser_channel: string | null;
       profile_dir: string;
       profile_initialized: boolean;
+      local_qwenvl_available?: boolean;
       busy: boolean;
       login_open?: boolean;
       stage?: string;
@@ -262,7 +263,7 @@ export const api = {
 
   convertPromptWithWebLLM: async (payload: {
     source_text: string;
-    provider: "gemini" | "chatgpt";
+    provider: "gemini" | "chatgpt" | "local_qwenvl";
     workflow_path: string;
     target_node_id?: string;
     target_input_key?: string;

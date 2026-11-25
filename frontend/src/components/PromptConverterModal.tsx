@@ -121,14 +121,16 @@ export const PromptConverterModal: React.FC<Props> = ({
     window.addEventListener("paste", onPaste);
     return () => window.removeEventListener("paste", onPaste);
   }, []);
-  const [provider, setProvider] = useState<"gemini" | "chatgpt">(() => {
+  const [provider, setProvider] = useState<"gemini" | "chatgpt" | "local_qwenvl">(() => {
     try {
       const saved = localStorage.getItem("comfyvault_converter_provider");
-      return saved === "chatgpt" ? "chatgpt" : "gemini";
+      if (saved === "chatgpt" || saved === "local_qwenvl") return saved;
+      return "gemini";
     } catch {
       return "gemini";
     }
   });
+  const providerLabel = provider === "local_qwenvl" ? "Qwen3-VL" : provider.toUpperCase();
   const [langPref, setLangPref] = useState<"auto" | "en" | "zh">("auto");
   const [showWindow, setShowWindow] = useState(false);
 
@@ -499,8 +501,8 @@ export const PromptConverterModal: React.FC<Props> = ({
             {/* Engine + Login bar */}
             <div className="p-3.5 rounded-xl bg-[#141926] border border-zinc-800 space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold text-zinc-200">{t("2. 选择网页版 AI：", "2. Select Web AI:")}</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-semibold text-zinc-200">{t("2. 选择 AI 引擎：", "2. Select AI Engine:")}</span>
                   <button
                     type="button"
                     onClick={() => setProvider("gemini")}
@@ -523,23 +525,44 @@ export const PromptConverterModal: React.FC<Props> = ({
                   >
                     {t("ChatGPT 网页版", "ChatGPT Web")}
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setProvider("local_qwenvl")}
+                    className={`px-3 py-1 rounded-lg text-xs font-semibold border transition-colors ${
+                      provider === "local_qwenvl"
+                        ? "bg-violet-600 border-violet-400 text-white"
+                        : "bg-[#0d1018] border-zinc-700 text-zinc-300 hover:border-zinc-500"
+                    }`}
+                    title={t(
+                      "调用本地 ComfyUI 的 Qwen3-VL-4B-Instruct-Abliterated 节点，100% 离线推理、无云端审核拦截，完成后自动释放显存",
+                      "Run local ComfyUI Qwen3-VL-4B-Instruct-Abliterated node completely offline with zero cloud censorship; auto-unloads VRAM after inference"
+                    )}
+                  >
+                    {t("本地 Qwen3-VL（无审核）", "Local Qwen3-VL (Offline)")}
+                  </button>
                 </div>
 
                 <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => handleOpenLogin(provider)}
-                    className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-[11px] text-amber-300 flex items-center gap-1"
-                    title={t(
-                      "首次使用请点此打开独立浏览器完成一次手动登录，关闭浏览器后登录态将持久保存在本地缓存",
-                      "For first-time use, click to open a standalone browser and sign in manually once. Your login session will be saved locally after closing the browser."
-                    )}
-                  >
-                    <ExternalLink className="w-3 h-3" />
-                    {profileInitialized
-                      ? t(`检查/重新登录 ${provider.toUpperCase()}`, `Check / Re-login ${provider.toUpperCase()}`)
-                      : t(`首次登录 ${provider.toUpperCase()}`, `First-time Login ${provider.toUpperCase()}`)}
-                  </button>
+                  {provider === "local_qwenvl" ? (
+                    <span className="px-2.5 py-1 rounded-lg bg-violet-500/15 border border-violet-500/35 text-[11px] text-violet-200">
+                      {t("本地离线 · 完后自动释显存", "Local Offline · Auto VRAM Unload")}
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleOpenLogin(provider)}
+                      className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-[11px] text-amber-300 flex items-center gap-1"
+                      title={t(
+                        "首次使用请点此打开独立浏览器完成一次手动登录，关闭浏览器后登录态将持久保存在本地缓存",
+                        "For first-time use, click to open a standalone browser and sign in manually once. Your login session will be saved locally after closing the browser."
+                      )}
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                      {profileInitialized
+                        ? t(`检查/重新登录 ${provider.toUpperCase()}`, `Check / Re-login ${provider.toUpperCase()}`)
+                        : t(`首次登录 ${provider.toUpperCase()}`, `First-time Login ${provider.toUpperCase()}`)}
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -594,15 +617,17 @@ export const PromptConverterModal: React.FC<Props> = ({
                   </div>
                 )}
 
-                <label className="ml-auto flex items-center gap-1.5 text-[11px] text-zinc-400 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={showWindow}
-                    onChange={(e) => setShowWindow(e.target.checked)}
-                    className="accent-indigo-500"
-                  />
-                  {t("显示浏览器窗口", "Show browser window")}
-                </label>
+                {provider !== "local_qwenvl" && (
+                  <label className="ml-auto flex items-center gap-1.5 text-[11px] text-zinc-400 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={showWindow}
+                      onChange={(e) => setShowWindow(e.target.checked)}
+                      className="accent-indigo-500"
+                    />
+                    {t("显示浏览器窗口", "Show browser window")}
+                  </label>
+                )}
               </div>
 
               {/* Divider Detection Status */}
@@ -875,32 +900,46 @@ export const PromptConverterModal: React.FC<Props> = ({
                   </button>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 pl-6">
-                  <button
-                    type="button"
-                    disabled={resetting}
-                    onClick={() => handleResetBrowser({ autoOpen: lastAutoOpen })}
-                    className="px-3 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 border border-rose-400/50 text-[11px] font-semibold text-rose-100 flex items-center gap-1.5"
-                  >
-                    {resetting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
-                    {t("重置浏览器并立即重试", "Reset Browser & Retry Now")}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={resetting}
-                    onClick={() => handleResetBrowser({ autoOpen: lastAutoOpen, forceShowWindow: true })}
-                    className="px-3 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 text-[11px] font-medium text-zinc-100 flex items-center gap-1.5"
-                  >
-                    <Eye className="w-3.5 h-3.5 text-indigo-300" />
-                    {t("显示浏览器窗口重试（便于排查）", "Retry with Visible Browser")}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleOpenLogin(provider)}
-                    className="px-3 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-[11px] text-amber-300 flex items-center gap-1.5"
-                  >
-                    <ExternalLink className="w-3.5 h-3.5" />
-                    {t(`重新登录 ${provider.toUpperCase()}`, `Re-login ${provider.toUpperCase()}`)}
-                  </button>
+                  {provider === "local_qwenvl" ? (
+                    <button
+                      type="button"
+                      disabled={converting}
+                      onClick={() => handleConvert(lastAutoOpen)}
+                      className="px-3 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 border border-rose-400/50 text-[11px] font-semibold text-rose-100 flex items-center gap-1.5"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      {t("立即重试本地 Qwen3-VL", "Retry Local Qwen3-VL")}
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        disabled={resetting}
+                        onClick={() => handleResetBrowser({ autoOpen: lastAutoOpen })}
+                        className="px-3 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 border border-rose-400/50 text-[11px] font-semibold text-rose-100 flex items-center gap-1.5"
+                      >
+                        {resetting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
+                        {t("重置浏览器并立即重试", "Reset Browser & Retry Now")}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={resetting}
+                        onClick={() => handleResetBrowser({ autoOpen: lastAutoOpen, forceShowWindow: true })}
+                        className="px-3 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 text-[11px] font-medium text-zinc-100 flex items-center gap-1.5"
+                      >
+                        <Eye className="w-3.5 h-3.5 text-indigo-300" />
+                        {t("显示浏览器窗口重试（便于排查）", "Retry with Visible Browser")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenLogin(provider)}
+                        className="px-3 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-[11px] text-amber-300 flex items-center gap-1.5"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        {t(`重新登录 ${provider.toUpperCase()}`, `Re-login ${provider.toUpperCase()}`)}
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             )}
@@ -957,20 +996,30 @@ export const PromptConverterModal: React.FC<Props> = ({
             {converting ? (
               <span className="text-amber-300 flex items-center gap-1.5">
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                {referenceImage
+                {provider === "local_qwenvl"
                   ? t(
-                      `正在上传参考图并调用 ${provider.toUpperCase()} 网页版反推结构化提示词（通常 15~40 秒）...`,
-                      `Uploading image & calling ${provider.toUpperCase()} Web to reverse-prompt (usually 15–40s)...`
+                      "正在通过本地 ComfyUI 运行 Qwen3-VL 推理（完全离线、完成后自动释放显存）...",
+                      "Running local Qwen3-VL via ComfyUI (100% offline, auto-unloads VRAM)..."
+                    )
+                  : referenceImage
+                  ? t(
+                      `正在上传参考图并调用 ${providerLabel} 网页版反推结构化提示词（通常 15~40 秒）...`,
+                      `Uploading image & calling ${providerLabel} Web to reverse-prompt (usually 15–40s)...`
                     )
                   : t(
-                      `正在调用 ${provider.toUpperCase()} 网页版生成结构化提示词（通常 10~30 秒）...`,
-                      `Calling ${provider.toUpperCase()} Web to generate structured prompt (usually 10–30s)...`
+                      `正在调用 ${providerLabel} 网页版生成结构化提示词（通常 10~30 秒）...`,
+                      `Calling ${providerLabel} Web to generate structured prompt (usually 10–30s)...`
                     )}
               </span>
+            ) : provider === "local_qwenvl" ? (
+              t(
+                "本地 Qwen3-VL：直接调用本地 ComfyUI 节点推理，无云端内容审查拦截，需确保 ComfyUI 已启动",
+                "Local Qwen3-VL: Runs directly via local ComfyUI node with zero cloud filtering (requires ComfyUI running)."
+              )
             ) : (
               t(
-                "提示：首次使用请先点上方「首次登录」在独立浏览器中登录一次，之后即可最小化静默复用缓存",
-                "Tip: For first-time use, click 'First-time Login' above to sign in once in the standalone browser; subsequent runs reuse the cached session silently."
+                "提示：首次使用请先点上方「首次登录」在独立浏览器中登录一次，之后即可静默复用会话与缓存",
+                "Tip: For first-time use, click 'First-time Login' above to sign in once; subsequent runs reuse the cached session silently."
               )
             )}
           </div>

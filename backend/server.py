@@ -986,7 +986,11 @@ class VaultApp:
     async def handle_prompt_converter_convert(self, request: web.Request) -> web.Response:
         import uuid
         from .config import DATA_DIR
-        from .prompt_converter import build_conversion_instruction, convert_via_web_llm_sync
+        from .prompt_converter import (
+            build_conversion_instruction,
+            convert_via_local_qwenvl_sync,
+            convert_via_web_llm_sync,
+        )
 
         body: Dict[str, Any] = {}
         temp_image_path: Optional[Path] = None
@@ -1067,15 +1071,22 @@ class VaultApp:
             )
 
             try:
-                converted_part = await asyncio.to_thread(
-                    convert_via_web_llm_sync,
-                    provider,
-                    instruction,
-                    show_window,
-                    str(temp_image_path) if temp_image_path else None,
-                )
+                if provider == "local_qwenvl":
+                    converted_part = await asyncio.to_thread(
+                        convert_via_local_qwenvl_sync,
+                        instruction,
+                        str(temp_image_path) if temp_image_path else None,
+                    )
+                else:
+                    converted_part = await asyncio.to_thread(
+                        convert_via_web_llm_sync,
+                        provider,
+                        instruction,
+                        show_window,
+                        str(temp_image_path) if temp_image_path else None,
+                    )
                 if not converted_part:
-                    return web.json_response({"error": "网页版未返回有效内容，请重试或勾选显示窗口检查"}, status=500)
+                    return web.json_response({"error": "未返回有效内容，请重试或检查模型状态"}, status=500)
                 if has_divider and fixed_prefix:
                     final_prompt = fixed_prefix.rstrip() + "\n\n" + converted_part.strip()
                 else:
