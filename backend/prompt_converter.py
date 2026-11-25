@@ -912,15 +912,40 @@ def _http_json(url: str, payload: Optional[Dict[str, Any]] = None, timeout: floa
         return json.loads(resp.read().decode("utf-8", errors="ignore"))
 
 
-def _upload_image_to_comfy(image_path: str) -> str:
-    """Upload a local image to ComfyUI /upload/image and return the LoadImage reference string."""
+def _upload_image_to_comfy(image_path: str, max_side: int = 1024) -> str:
+    """Resize large reference images to max_side (preserving exact aspect ratio) for fast VLM inference,
+    then upload to ComfyUI /upload/image and return the LoadImage reference string.
+    """
     p = Path(image_path)
     raw = p.read_bytes()
+    ext = p.suffix.lower() or ".png"
     mime, _ = mimetypes.guess_type(str(p))
     if not mime or not mime.startswith("image/"):
         mime = "image/png"
+
+    # Downscale high-res images (e.g. 2K/4K) to max 1024px on the long edge so Qwen3-VL's
+    # dynamic vision tokenizer doesn't create thousands of redundant tokens and stall inference.
+    try:
+        import io
+        from PIL import Image, ImageOps
+
+        with Image.open(io.BytesIO(raw)) as im:
+            im = ImageOps.exif_transpose(im)
+            w, h = im.size
+            if max(w, h) > max_side:
+                scale = max_side / float(max(w, h))
+                nw, nh = max(64, int(round(w * scale))), max(64, int(round(h * scale)))
+                im = im.resize((nw, nh), Image.Resampling.LANCZOS)
+                buf = io.BytesIO()
+                im.convert("RGB").save(buf, format="JPEG", quality=90)
+                raw = buf.getvalue()
+                ext = ".jpg"
+                mime = "image/jpeg"
+    except Exception:
+        pass
+
     boundary = f"----ComfyVaultVLM{uuid.uuid4().hex}"
-    filename = f"cv_vlm_{uuid.uuid4().hex[:10]}{p.suffix.lower() or '.png'}"
+    filename = f"cv_vlm_{uuid.uuid4().hex[:10]}{ext}"
     parts = [
         f"--{boundary}\r\n".encode("utf-8"),
         f'Content-Disposition: form-data; name="image"; filename="{filename}"\r\n'.encode("utf-8"),
@@ -1009,7 +1034,7 @@ def convert_via_local_qwenvl_sync(
             "device": "auto",
             "preset_prompt": chosen_preset,
             "custom_prompt": f"[PORTRAIT_STRICT_ANALYSIS]\n{instruction_text}",
-            "max_tokens": 1536,
+            "max_tokens": 768,
             "temperature": 0.45,
             "top_p": 0.9,
             "num_beams": 1,
@@ -1057,7 +1082,7 @@ def convert_via_local_qwenvl_sync(
             raise RuntimeError(f"ComfyUI 未返回 prompt_id: {queued}")
 
         # Poll /history/{prompt_id} until finished
-        deadline = time.time() + 180.0
+        deadline = time.time() + 240.0
         raw_text = ""
         while time.time() < deadline:
             try:
