@@ -76,9 +76,14 @@ class AssetScanner:
         self._thumb_lock = threading.Lock()
         self._observer: Optional[Observer] = None
         self._pending_files: Dict[str, float] = {}
+        self._pending_stats: Dict[str, Tuple[int, int]] = {}
         self._pending_lock = threading.Lock()
         self._debounce_thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
+        self._is_comfy_executing_cb: Optional[Callable[[], bool]] = None
+
+    def set_comfy_executing_check(self, cb: Callable[[], bool]) -> None:
+        self._is_comfy_executing_cb = cb
 
     def _emit(self, event_type: str, payload: Dict[str, Any]) -> None:
         if self.notify_cb:
@@ -185,24 +190,84 @@ class AssetScanner:
         with self._pending_lock:
             self._pending_files[str(path)] = time.time()
 
+    def _is_under_comfy_output(self, path: Path) -> bool:
+        try:
+            res_low = str(path.resolve()).lower()
+            out_low = str(OUTPUT_DIR.resolve()).lower()
+            return res_low == out_low or res_low.startswith(out_low + os.sep)
+        except Exception:
+            return False
+
+    def _is_media_file_complete(self, path: Path) -> bool:
+        """Verify file is non-empty, unlocked, and (for images) decodable rather than half-written."""
+        try:
+            st = path.stat()
+            if st.st_size <= 0:
+                return False
+            ext = path.suffix.lower()
+            if ext in (".png", ".webp", ".jpg", ".jpeg"):
+                from PIL import Image
+
+                with Image.open(path) as im:
+                    w, h = im.size
+                    if w <= 0 or h <= 0:
+                        return False
+                    # Force full header/frame decode check to reject truncated/in-progress WebP/PNG writes
+                    im.verify()
+            return True
+        except Exception:
+            return False
+
     def _debounce_loop(self) -> None:
         while not self._stop_event.is_set():
             time.sleep(0.5)
             now = time.time()
+            comfy_running = False
+            if self._is_comfy_executing_cb:
+                try:
+                    comfy_running = bool(self._is_comfy_executing_cb())
+                except Exception:
+                    comfy_running = False
+
             ready = []
             with self._pending_lock:
                 for p_str, ts in list(self._pending_files.items()):
-                    if now - ts >= 0.8:
-                        ready.append(Path(p_str))
+                    if now - ts < 1.0:
+                        continue
+                    p = Path(p_str)
+                    if not p.exists():
                         del self._pending_files[p_str]
-            for p in ready:
-                if p.exists():
+                        self._pending_stats.pop(p_str, None)
+                        continue
+                    # Do NOT index files in ComfyUI/output while a workflow is still running!
+                    if comfy_running and self._is_under_comfy_output(p):
+                        continue
                     try:
-                        asset_id = self.index_file(p, generate_thumb=True)
-                        if asset_id:
-                            self._emit("asset_indexed", {"id": asset_id, "rel_path": self._to_rel(p)})
-                    except Exception:
-                        pass
+                        st = p.stat()
+                        sig = (st.st_size, st.st_mtime_ns)
+                    except OSError:
+                        continue
+                    # Require size > 0 and unchanged across consecutive polls before indexing
+                    if st.st_size <= 0 or self._pending_stats.get(p_str) != sig:
+                        self._pending_stats[p_str] = sig
+                        continue
+                    ready.append(p)
+                    del self._pending_files[p_str]
+                    self._pending_stats.pop(p_str, None)
+
+            for p in ready:
+                if not p.exists():
+                    continue
+                if not self._is_media_file_complete(p):
+                    # File still being flushed to disk — re-queue and retry on next cycle
+                    self._queue_watched_file(p)
+                    continue
+                try:
+                    asset_id = self.index_file(p, generate_thumb=True)
+                    if asset_id:
+                        self._emit("asset_indexed", {"id": asset_id, "rel_path": self._to_rel(p)})
+                except Exception:
+                    pass
 
     def _to_rel(self, file_path: Path) -> str:
         resolved = file_path.resolve()
@@ -233,6 +298,8 @@ class AssetScanner:
         try:
             st = file_path.stat()
         except OSError:
+            return None
+        if st.st_size <= 0:
             return None
 
         rel_path = self._to_rel(file_path)

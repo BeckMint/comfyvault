@@ -44,6 +44,9 @@ class ComfyBridge:
         self._lineage_map: Dict[str, int] = {}
         self._task: Optional[asyncio.Task] = None
         self._stopped = False
+        self.scanner.set_comfy_executing_check(
+            lambda: bool(self.state.get("online") and self.state.get("executing_prompt_id"))
+        )
 
     def _emit(self, event_type: str, payload: Dict[str, Any]) -> None:
         if self.notify_cb:
