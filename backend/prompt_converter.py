@@ -845,7 +845,9 @@ def convert_via_web_llm_sync(
             "--disable-features=msEdgeStartupBoost",
         ]
         if not show_window:
-            args.append("--start-minimized")
+            # Keep window off-screen instead of --start-minimized so document.visibilityState stays 'visible'
+            # (ChatGPT's new React UI skips rendering assistant responses when minimized!)
+            args.append("--window-position=-2400,-2400")
 
         with sync_playwright() as p:
             launch_kwargs: Dict[str, Any] = {
@@ -925,7 +927,7 @@ def convert_via_web_llm_sync(
                             'button[aria-label*="Stop"]',
                             'button[aria-label*="停止"]',
                         ],
-                        timeout_sec=110.0 if image_path else 95.0,
+                        timeout_sec=150.0 if image_path else 110.0,
                     )
                     return extract_marked_prompt(raw_reply)
 
@@ -950,7 +952,7 @@ def convert_via_web_llm_sync(
                     except Exception:
                         raise RuntimeError("未检测到 ChatGPT 输入框（可能尚未登录或触发了验证），请先点击「检查/重新登录 CHATGPT」检查")
 
-                    reply_sel = '[data-message-author-role="assistant"], article[data-testid^="conversation-turn-"] .markdown, .agent-turn .markdown'
+                    reply_sel = '[data-dil-message-id], [data-message-author-role="assistant"], article[data-testid^="conversation-turn-"] .markdown, .agent-turn .markdown'
                     prev_cnt = page.locator(reply_sel).count()
                     editor = page.locator(editor_sel).first
                     if image_path:
@@ -996,7 +998,7 @@ def convert_via_web_llm_sync(
                             'button[aria-label*="Stop"]',
                             'button[aria-label*="停止"]',
                         ],
-                        timeout_sec=110.0 if image_path else 95.0,
+                        timeout_sec=150.0 if image_path else 110.0,
                     )
                     return extract_marked_prompt(raw_reply)
             finally:
