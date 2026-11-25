@@ -24,7 +24,7 @@ UI_ONLY_TYPES = {
 }
 
 CONTROL_AFTER_GEN_VALUES = {"fixed", "increment", "decrement", "randomize"}
-WIDGET_BASE_TYPES = {"INT", "FLOAT", "STRING", "BOOLEAN", "COMBO"}
+WIDGET_BASE_TYPES = {"INT", "FLOAT", "STRING", "BOOLEAN", "COMBO", "COMFY_DYNAMICCOMBO_V3"}
 
 _node_info_cache: Dict[str, Any] = {}
 
@@ -157,7 +157,13 @@ def _is_widget_spec(spec: Any) -> Tuple[bool, Optional[List[Any]], Dict[str, Any
         return True, t, opts
     if isinstance(t, str):
         if t in WIDGET_BASE_TYPES:
-            choices = opts.get("options") if t == "COMBO" and isinstance(opts.get("options"), list) else None
+            choices = None
+            raw_opts = opts.get("options")
+            if t in ("COMBO", "COMFY_DYNAMICCOMBO_V3") and isinstance(raw_opts, list):
+                choices = [
+                    o["key"] if isinstance(o, dict) and "key" in o else o
+                    for o in raw_opts
+                ]
             return True, choices, opts
     return False, None, {}
 
@@ -304,7 +310,13 @@ def load_and_convert_workflow_file(
                 wi = 0
                 for k, _choices, opts in widget_specs:
                     if wi >= len(wv):
-                        break
+                        # Fill default for required V3 dynamic combo / combo widgets if omitted from widgets_values
+                        if k in req_defs and k not in linked_input_names:
+                            if "default" in opts:
+                                inputs_out[k] = opts["default"]
+                            elif _choices:
+                                inputs_out[k] = _choices[0]
+                        continue
                     val = wv[wi]
                     wi += 1
                     # Only write widget value if this input is NOT driven by a link
