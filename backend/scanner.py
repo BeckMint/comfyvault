@@ -273,9 +273,9 @@ class AssetScanner:
             "workflow_hash": parsed["workflow_hash"],
             "workflow_name": parsed["workflow_name"],
             "recipe_hash": parsed["recipe_hash"],
-            "base_model": parsed["base_model"],
-            "model_family": parsed["model_family"],
-            "primary_prompt": parsed["primary_prompt"],
+            "base_model": parsed.get("base_model"),
+            "model_family": parsed.get("model_family"),
+            "primary_prompt": parsed.get("primary_prompt", ""),
             "all_prompts_text": parsed["all_prompts_text"],
             "prompts": parsed["prompts"],
             "models": parsed["models"],
@@ -363,7 +363,8 @@ class AssetScanner:
             def _parse_only(path: Path) -> Optional[Dict[str, Any]]:
                 try:
                     return self.build_record(path, generate_thumb=False)
-                except Exception:
+                except Exception as e:
+                    print(f"[Scanner] Failed to index {path}: {e}")
                     return None
 
             if discovered_files:

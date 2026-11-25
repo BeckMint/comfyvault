@@ -395,6 +395,7 @@ def parse_comfy_metadata(
             "seed_targets": seed_targets,
             "param_targets": param_targets,
             "base_model": None,
+            "model_family": None,
             "primary_prompt": prompts[0]["text"] if prompts else "",
             "all_prompts_text": "\n".join(p["text"] for p in prompts),
             "recipe_hash": None,
