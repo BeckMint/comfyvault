@@ -223,7 +223,7 @@ class VaultDB:
             conn = self._conn()
             for record in records:
                 existing = conn.execute(
-                    "SELECT id, comfy_version, gen_duration_sec, parent_id FROM assets WHERE rel_path = ?",
+                    "SELECT id, comfy_version, gen_duration_sec, parent_id, raw_prompt_json, prompts_json FROM assets WHERE rel_path = ?",
                     (record["rel_path"],),
                 ).fetchone()
 
@@ -238,6 +238,52 @@ class VaultDB:
                 parent_id = record.get("parent_id")
                 if parent_id is None and existing:
                     parent_id = existing["parent_id"]
+
+                # Guard against disk re-scans (e.g. lossless WebP saved without EXIF prompt metadata)
+                # wiping out rich prompt/LoRA/model metadata previously captured from ComfyUI /history!
+                incoming_has_meta = bool(record.get("raw_prompt_json") or record.get("prompts"))
+                existing_has_meta = bool(
+                    existing
+                    and (
+                        existing["raw_prompt_json"]
+                        or (existing["prompts_json"] and existing["prompts_json"] not in ("[]", ""))
+                    )
+                )
+                if existing and existing_has_meta and not incoming_has_meta:
+                    asset_id = existing["id"]
+                    conn.execute(
+                        """
+                        UPDATE assets SET
+                            rel_path=?, folder=?, filename=?, media_type=?, ext=?,
+                            file_size=?, mtime_ns=?, created_at=?, width=?, height=?,
+                            duration=?, fps=?, thumb_name=COALESCE(?, thumb_name),
+                            comfy_version=?, gen_duration_sec=?,
+                            parent_id=COALESCE(?, parent_id),
+                            is_deleted=0
+                        WHERE id=?
+                        """,
+                        (
+                            record["rel_path"],
+                            record["folder"],
+                            record["filename"],
+                            record["media_type"],
+                            record["ext"],
+                            record["file_size"],
+                            record["mtime_ns"],
+                            record["created_at"],
+                            record.get("width", 0),
+                            record.get("height", 0),
+                            record.get("duration"),
+                            record.get("fps"),
+                            record.get("thumb_name"),
+                            comfy_version,
+                            gen_dur,
+                            parent_id,
+                            asset_id,
+                        ),
+                    )
+                    asset_ids.append(asset_id)
+                    continue
 
                 vals = (
                     record["rel_path"],
