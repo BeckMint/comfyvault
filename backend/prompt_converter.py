@@ -550,6 +550,23 @@ def _set_best_file_input(page: Any, image_path: str) -> bool:
         return False
 
 
+def _dismiss_overlays(page: Any) -> None:
+    """Close any open Angular Material / popover backdrop (e.g. Gemini's '+' upload menu) so it doesn't intercept clicks."""
+    try:
+        backdrop = page.locator(".cdk-overlay-backdrop-showing, .cdk-overlay-backdrop").first
+        if backdrop.count() > 0 and backdrop.is_visible():
+            page.keyboard.press("Escape")
+            time.sleep(0.25)
+            if backdrop.count() > 0 and backdrop.is_visible():
+                try:
+                    backdrop.click(position={"x": 5, "y": 5}, force=True, timeout=1500)
+                    time.sleep(0.25)
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+
 def _attach_image_to_page(page: Any, editor: Any, image_path: str, provider: str) -> None:
     """Attach a local image file to Gemini or ChatGPT web composer using resilient multi-strategy upload."""
     p = Path(image_path)
@@ -619,6 +636,7 @@ def _attach_image_to_page(page: Any, editor: Any, image_path: str, provider: str
                             f"{label} 网页版尚未登录（未登录的游客模式不支持上传图片），请先点击右上角「检查/重新登录 {label}」完成登录后重试"
                         )
                     if _set_best_file_input(page, str(p)):
+                        _dismiss_overlays(page)
                         attached = _wait_for_attachment_preview(page, provider, timeout_sec=4.0)
                         if attached:
                             break
@@ -646,6 +664,8 @@ def _attach_image_to_page(page: Any, editor: Any, image_path: str, provider: str
             f"未能将参考图片上传到 {provider.upper()} 网页端，请确认已登录并可勾选「显示浏览器窗口」检查页面状态"
         )
 
+    # Ensure any upload menu / modal overlay is closed before focusing the prompt editor
+    _dismiss_overlays(page)
     # Give the web client a moment to finish uploading the image blob before typing & sending
     time.sleep(2.0)
 
@@ -657,7 +677,15 @@ def _fill_and_send(
     send_selectors: List[str],
     has_image: bool = False,
 ) -> None:
-    editor.click()
+    _dismiss_overlays(page)
+    try:
+        editor.click(timeout=5000)
+    except Exception:
+        _dismiss_overlays(page)
+        try:
+            editor.click(force=True, timeout=5000)
+        except Exception:
+            editor.evaluate("el => el.focus()")
     time.sleep(0.25)
     # Insert full multi-line text cleanly using keyboard.insert_text (avoids newline-submitting prematurely)
     try:
@@ -879,7 +907,7 @@ def convert_via_web_llm_sync(
                     if "auth" in url_low or "login" in url_low:
                         raise RuntimeError("ChatGPT 尚未登录，请先点击「检查/重新登录 CHATGPT」完成一次登录")
 
-                    editor_sel = '#prompt-textarea, div[contenteditable="true"][id="prompt-textarea"], textarea[name="prompt-textarea"]'
+                    editor_sel = '#prompt-textarea, div.ProseMirror[contenteditable="true"], div[contenteditable="true"][id="prompt-textarea"], textarea[name="prompt-textarea"]'
                     try:
                         page.wait_for_selector(editor_sel, timeout=20000)
                     except Exception:
