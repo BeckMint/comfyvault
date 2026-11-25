@@ -1,4 +1,5 @@
 import base64
+import json
 import mimetypes
 import os
 import re
@@ -11,6 +12,8 @@ from typing import Any, Dict, List, Optional, Tuple
 from .config import DATA_DIR
 
 WEB_LLM_PROFILE_DIR = DATA_DIR / "web_llm_profile"
+WEB_LLM_SESSIONS_FILE = DATA_DIR / "web_llm_sessions.json"
+MAX_TURNS_PER_SESSION = 20
 
 _browser_lock = threading.Lock()
 _login_proc_lock = threading.Lock()
@@ -172,6 +175,7 @@ def build_conversion_instruction(
         f"Output language: {out_lang}.\n\n"
         f"{constraint_block}\n\n"
         "OUTPUT FORMAT RULES:\n"
+        "- Treat this request independently from any earlier messages or images in this conversation.\n"
         "- Output ONLY the converted prompt text wrapped strictly between <<<PROMPT_START>>> and <<<PROMPT_END>>>.\n"
         "- Do NOT include explanations, markdown headings, bullet lists, or extra commentary outside the markers.\n\n"
         f"{task_block}"
@@ -715,18 +719,91 @@ def _fill_and_send(
     page.keyboard.press("Enter")
 
 
-def _extract_marked_from_page(page: Any) -> str:
-    """DOM-agnostic fallback: scan main/body innerText for a completed <<<PROMPT_START>>>...<<<PROMPT_END>>> block."""
+def _load_sessions() -> Dict[str, Dict[str, Any]]:
+    try:
+        if WEB_LLM_SESSIONS_FILE.exists():
+            data = json.loads(WEB_LLM_SESSIONS_FILE.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                return data
+    except Exception:
+        pass
+    return {}
+
+
+def _save_session(provider: str, url: str, turns: int) -> None:
+    try:
+        WEB_LLM_SESSIONS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        data = _load_sessions()
+        data[provider] = {"url": url, "turns": turns, "updated_at": time.time()}
+        WEB_LLM_SESSIONS_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def _clear_session(provider: str) -> None:
+    try:
+        data = _load_sessions()
+        if provider in data:
+            del data[provider]
+            WEB_LLM_SESSIONS_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def _is_valid_session_url(provider: str, url: str) -> bool:
+    u = (url or "").strip()
+    if provider == "chatgpt":
+        return "chatgpt.com/c/" in u.lower()
+    if provider == "gemini":
+        low = u.lower()
+        idx = low.find("gemini.google.com/app/")
+        if idx == -1:
+            return False
+        tail = u[idx + len("gemini.google.com/app/") :].split("?")[0].strip("/")
+        return len(tail) >= 6
+    return False
+
+
+def _page_shows_session_limit(page: Any) -> bool:
+    """Detect if a reused conversation hit context length limit or was deleted."""
+    try:
+        txt = (page.evaluate("() => (document.querySelector('main') || document.body)?.innerText || ''") or "").lower()
+        limit_hints = (
+            "maximum length for this conversation",
+            "reached the maximum length",
+            "conversation not found",
+            "unable to load conversation",
+            "can't find that conversation",
+            "已达到此对话的最大长度",
+            "达到最大长度",
+            "无法加载对话",
+            "找不到该对话",
+            "对话不存在",
+        )
+        return any(h in txt for h in limit_hints)
+    except Exception:
+        return False
+
+
+def _collect_marked_blocks_from_page(page: Any) -> List[str]:
+    """DOM-agnostic scan: collect all completed <<<PROMPT_START>>>...<<<PROMPT_END>>> prompt blocks currently on page."""
     try:
         full_text = page.evaluate("() => (document.querySelector('main') || document.body)?.innerText || ''")
         if not full_text:
-            return ""
+            return []
         matches = re.findall(r"<<<PROMPT_START>>>\s*(.*?)\s*<<<PROMPT_END>>>", full_text, re.DOTALL)
-        valid = [m.strip() for m in matches if len(m.strip()) >= 25 and m.strip().lower() != "and"]
-        if valid:
-            return f"<<<PROMPT_START>>>\n{valid[-1]}\n<<<PROMPT_END>>>"
+        return [m.strip() for m in matches if len(m.strip()) >= 25 and m.strip().lower() != "and"]
     except Exception:
-        pass
+        return []
+
+
+def _extract_new_marked_from_page(page: Any, prev_blocks: List[str]) -> str:
+    """Return a newly generated <<<PROMPT_START>>>...<<<PROMPT_END>>> block that was not present before sending."""
+    cur = _collect_marked_blocks_from_page(page)
+    if not cur:
+        return ""
+    if len(cur) > len(prev_blocks) or (prev_blocks and cur[-1] != prev_blocks[-1]):
+        return f"<<<PROMPT_START>>>\n{cur[-1]}\n<<<PROMPT_END>>>"
     return ""
 
 
@@ -736,12 +813,14 @@ def _wait_for_stable_reply(
     prev_count: int,
     stop_selectors: List[str],
     timeout_sec: float = 95.0,
+    prev_marked_blocks: Optional[List[str]] = None,
 ) -> str:
     start = time.time()
     last_text = ""
     stable_since = 0.0
     marker_seen_since = 0.0
     last_marker_text = ""
+    baseline_blocks = list(prev_marked_blocks or [])
 
     while time.time() - start < timeout_sec:
         try:
@@ -755,8 +834,8 @@ def _wait_for_stable_reply(
                 except Exception:
                     pass
 
-            # 1) Universal DOM-agnostic fast path: if a complete <<<PROMPT_START>>>...<<<PROMPT_END>>> block is present
-            marked = _extract_marked_from_page(page)
+            # 1) Universal DOM-agnostic fast path: detect a NEW <<<PROMPT_START>>>...<<<PROMPT_END>>> block
+            marked = _extract_new_marked_from_page(page, baseline_blocks)
             if marked:
                 if not is_generating:
                     return marked
@@ -863,20 +942,42 @@ def convert_via_web_llm_sync(
             try:
                 page = ctx.pages[0] if ctx.pages else ctx.new_page()
 
+                sessions = _load_sessions()
+                saved_sess = sessions.get(provider) or {}
+                saved_url = str(saved_sess.get("url") or "").strip()
+                saved_turns = int(saved_sess.get("turns") or 0)
+                can_reuse = bool(saved_url and _is_valid_session_url(provider, saved_url) and saved_turns < MAX_TURNS_PER_SESSION)
+                current_turns = saved_turns if can_reuse else 0
+
                 if provider == "gemini":
+                    home_url = "https://gemini.google.com/app"
+                    target_url = saved_url if can_reuse else home_url
                     _set_progress(
                         "navigating",
                         2,
                         total_steps,
-                        "正在打开 Gemini 网页版并检测登录状态...",
-                        "Opening Gemini Web and checking login state...",
+                        f"正在打开 Gemini 网页版（{'复用会话 #' + str(current_turns + 1) if can_reuse else '新建会话'}）...",
+                        f"Opening Gemini Web ({'reusing chat #' + str(current_turns + 1) if can_reuse else 'new chat'})...",
                     )
-                    page.goto("https://gemini.google.com/app", wait_until="domcontentloaded", timeout=30000)
-                    time.sleep(2.0)
+                    page.goto(target_url, wait_until="domcontentloaded", timeout=30000)
+                    time.sleep(2.2)
                     if "accounts.google.com" in (page.url or "").lower():
                         raise RuntimeError("Gemini 尚未登录，请先点击「检查/重新登录 GEMINI」完成一次登录")
 
                     editor_sel = 'div.ql-editor[contenteditable="true"], rich-textarea [contenteditable="true"], textarea'
+                    if can_reuse:
+                        # Verify reused conversation loaded properly & didn't hit length limit
+                        reused_ok = True
+                        try:
+                            page.wait_for_selector(editor_sel, timeout=10000)
+                        except Exception:
+                            reused_ok = False
+                        if not reused_ok or _page_shows_session_limit(page):
+                            _clear_session("gemini")
+                            current_turns = 0
+                            page.goto(home_url, wait_until="domcontentloaded", timeout=30000)
+                            time.sleep(2.0)
+
                     try:
                         page.wait_for_selector(editor_sel, timeout=18000)
                     except Exception:
@@ -884,6 +985,7 @@ def convert_via_web_llm_sync(
 
                     reply_sel = "model-response message-content, .model-response-text, message-content"
                     prev_cnt = page.locator(reply_sel).count()
+                    prev_marked = _collect_marked_blocks_from_page(page)
                     editor = page.locator(editor_sel).first
                     if image_path:
                         _set_progress(
@@ -928,25 +1030,45 @@ def convert_via_web_llm_sync(
                             'button[aria-label*="停止"]',
                         ],
                         timeout_sec=150.0 if image_path else 110.0,
+                        prev_marked_blocks=prev_marked,
                     )
+                    # Persist conversation URL so future runs reuse the same thread (up to MAX_TURNS_PER_SESSION)
+                    time.sleep(0.5)
+                    final_url = page.url or ""
+                    if _is_valid_session_url("gemini", final_url):
+                        _save_session("gemini", final_url, current_turns + 1)
                     return extract_marked_prompt(raw_reply)
 
                 else:
                     # ChatGPT
+                    home_url = "https://chatgpt.com/"
+                    target_url = saved_url if can_reuse else home_url
                     _set_progress(
                         "navigating",
                         2,
                         total_steps,
-                        "正在打开 ChatGPT 网页版并检测登录状态...",
-                        "Opening ChatGPT Web and checking login state...",
+                        f"正在打开 ChatGPT 网页版（{'复用会话 #' + str(current_turns + 1) if can_reuse else '新建会话'}）...",
+                        f"Opening ChatGPT Web ({'reusing chat #' + str(current_turns + 1) if can_reuse else 'new chat'})...",
                     )
-                    page.goto("https://chatgpt.com/", wait_until="domcontentloaded", timeout=30000)
+                    page.goto(target_url, wait_until="domcontentloaded", timeout=30000)
                     time.sleep(2.5)
                     url_low = (page.url or "").lower()
                     if "auth" in url_low or "login" in url_low:
                         raise RuntimeError("ChatGPT 尚未登录，请先点击「检查/重新登录 CHATGPT」完成一次登录")
 
                     editor_sel = '#prompt-textarea, div.ProseMirror[contenteditable="true"], div[contenteditable="true"][id="prompt-textarea"], textarea[name="prompt-textarea"]'
+                    if can_reuse:
+                        reused_ok = True
+                        try:
+                            page.wait_for_selector(editor_sel, timeout=10000)
+                        except Exception:
+                            reused_ok = False
+                        if not reused_ok or _page_shows_session_limit(page):
+                            _clear_session("chatgpt")
+                            current_turns = 0
+                            page.goto(home_url, wait_until="domcontentloaded", timeout=30000)
+                            time.sleep(2.5)
+
                     try:
                         page.wait_for_selector(editor_sel, timeout=20000)
                     except Exception:
@@ -954,6 +1076,7 @@ def convert_via_web_llm_sync(
 
                     reply_sel = '[data-dil-message-id], [data-message-author-role="assistant"], article[data-testid^="conversation-turn-"] .markdown, .agent-turn .markdown'
                     prev_cnt = page.locator(reply_sel).count()
+                    prev_marked = _collect_marked_blocks_from_page(page)
                     editor = page.locator(editor_sel).first
                     if image_path:
                         _set_progress(
@@ -999,7 +1122,12 @@ def convert_via_web_llm_sync(
                             'button[aria-label*="停止"]',
                         ],
                         timeout_sec=150.0 if image_path else 110.0,
+                        prev_marked_blocks=prev_marked,
                     )
+                    time.sleep(0.5)
+                    final_url = page.url or ""
+                    if _is_valid_session_url("chatgpt", final_url):
+                        _save_session("chatgpt", final_url, current_turns + 1)
                     return extract_marked_prompt(raw_reply)
             finally:
                 try:
