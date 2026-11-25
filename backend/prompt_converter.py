@@ -181,9 +181,13 @@ def build_conversion_instruction(
 def extract_marked_prompt(raw_text: str) -> str:
     if not raw_text:
         return ""
-    m = re.search(r"<<<PROMPT_START>>>\s*(.*?)\s*<<<PROMPT_END>>>", raw_text, re.DOTALL)
-    if m:
-        return m.group(1).strip()
+    matches = re.findall(r"<<<PROMPT_START>>>\s*(.*?)\s*<<<PROMPT_END>>>", raw_text, re.DOTALL)
+    # Filter out the instruction echo ("and" / tiny placeholders) and pick the last real generated prompt
+    valid = [m.strip() for m in matches if len(m.strip()) >= 20 and m.strip().lower() != "and"]
+    if valid:
+        return valid[-1]
+    if matches:
+        return matches[-1].strip()
     # Fallback: strip common markdown code fences
     cleaned = raw_text.strip()
     if cleaned.startswith("```"):
@@ -711,6 +715,21 @@ def _fill_and_send(
     page.keyboard.press("Enter")
 
 
+def _extract_marked_from_page(page: Any) -> str:
+    """DOM-agnostic fallback: scan main/body innerText for a completed <<<PROMPT_START>>>...<<<PROMPT_END>>> block."""
+    try:
+        full_text = page.evaluate("() => (document.querySelector('main') || document.body)?.innerText || ''")
+        if not full_text:
+            return ""
+        matches = re.findall(r"<<<PROMPT_START>>>\s*(.*?)\s*<<<PROMPT_END>>>", full_text, re.DOTALL)
+        valid = [m.strip() for m in matches if len(m.strip()) >= 25 and m.strip().lower() != "and"]
+        if valid:
+            return f"<<<PROMPT_START>>>\n{valid[-1]}\n<<<PROMPT_END>>>"
+    except Exception:
+        pass
+    return ""
+
+
 def _wait_for_stable_reply(
     page: Any,
     reply_selector: str,
@@ -721,26 +740,42 @@ def _wait_for_stable_reply(
     start = time.time()
     last_text = ""
     stable_since = 0.0
+    marker_seen_since = 0.0
+    last_marker_text = ""
 
     while time.time() - start < timeout_sec:
         try:
+            is_generating = False
+            for ssel in stop_selectors:
+                try:
+                    sb = page.locator(ssel).first
+                    if sb.count() > 0 and sb.is_visible():
+                        is_generating = True
+                        break
+                except Exception:
+                    pass
+
+            # 1) Universal DOM-agnostic fast path: if a complete <<<PROMPT_START>>>...<<<PROMPT_END>>> block is present
+            marked = _extract_marked_from_page(page)
+            if marked:
+                if not is_generating:
+                    return marked
+                if marked == last_marker_text:
+                    if marker_seen_since == 0.0:
+                        marker_seen_since = time.time()
+                    elif time.time() - marker_seen_since >= 1.5:
+                        return marked
+                else:
+                    last_marker_text = marked
+                    marker_seen_since = time.time()
+
+            # 2) Selector-based reply tracking (for replies that omitted markers)
             loc = page.locator(reply_selector)
             cnt = loc.count()
             if cnt > prev_count:
                 cur_text = (loc.nth(cnt - 1).inner_text() or "").strip()
-                is_generating = False
-                for ssel in stop_selectors:
-                    try:
-                        sb = page.locator(ssel).first
-                        if sb.count() > 0 and sb.is_visible():
-                            is_generating = True
-                            break
-                    except Exception:
-                        pass
-
                 if cur_text:
-                    # Fast exit if end marker already appeared and not generating
-                    if "<<<PROMPT_END>>>" in cur_text and not is_generating:
+                    if "<<<PROMPT_END>>>" in cur_text and len(extract_marked_prompt(cur_text)) >= 20 and not is_generating:
                         return cur_text
                     if cur_text == last_text and not is_generating:
                         if stable_since == 0.0:
@@ -754,6 +789,8 @@ def _wait_for_stable_reply(
             pass
         time.sleep(0.6)
 
+    if last_marker_text:
+        return last_marker_text
     if last_text:
         return last_text
     raise TimeoutError("等待网页版回复超时，请检查是否需要重新登录或存在验证提示")
@@ -913,7 +950,7 @@ def convert_via_web_llm_sync(
                     except Exception:
                         raise RuntimeError("未检测到 ChatGPT 输入框（可能尚未登录或触发了验证），请先点击「检查/重新登录 CHATGPT」检查")
 
-                    reply_sel = '[data-message-author-role="assistant"]'
+                    reply_sel = '[data-message-author-role="assistant"], article[data-testid^="conversation-turn-"] .markdown, .agent-turn .markdown'
                     prev_cnt = page.locator(reply_sel).count()
                     editor = page.locator(editor_sel).first
                     if image_path:
