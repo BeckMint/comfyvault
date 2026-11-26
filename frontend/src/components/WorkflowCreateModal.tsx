@@ -75,6 +75,94 @@ function isEditableInput(val: any): boolean {
   return typeof val === "string" || typeof val === "number" || typeof val === "boolean";
 }
 
+function parseOptionAspectRatio(opt: any): number | null {
+  if (typeof opt !== "string") return null;
+  const s = opt.trim();
+  // Match explicit ratio like "9:16 (Portrait Widescreen)", "2:3", "4:5", "16/9"
+  const mRatio = s.match(/(\d+(?:\.\d+)?)\s*[:/]\s*(\d+(?:\.\d+)?)/);
+  if (mRatio) {
+    const a = parseFloat(mRatio[1]);
+    const b = parseFloat(mRatio[2]);
+    if (a > 0 && b > 0) return a / b;
+  }
+  // Match explicit dimensions like "896x1152" or "1024×1536"
+  const mDim = s.match(/(\d{3,4})\s*[xX×]\s*(\d{3,4})/);
+  if (mDim) {
+    const w = parseFloat(mDim[1]);
+    const h = parseFloat(mDim[2]);
+    if (w > 0 && h > 0) return w / h;
+  }
+  return null;
+}
+
+function autoAdjustWorkflowAspectRatio(
+  promptJson: Record<string, ComfyNodeData>,
+  fieldOptions: Record<string, Record<string, any[]>>,
+  imgWidth: number,
+  imgHeight: number
+): string | null {
+  if (!imgWidth || !imgHeight || imgWidth <= 0 || imgHeight <= 0) return null;
+  const targetRatio = imgWidth / imgHeight;
+
+  // Strategy 1: Match aspect_ratio / ratio / resolution dropdown nodes (e.g. ResolutionSelector, CR Aspect Ratio)
+  for (const nid of Object.keys(promptJson)) {
+    const node = promptJson[nid];
+    if (!node?.inputs) continue;
+    const nodeOpts = fieldOptions[nid] || {};
+    for (const k of Object.keys(node.inputs)) {
+      const kl = k.toLowerCase();
+      if (typeof node.inputs[k] !== "string") continue;
+      if (!kl.includes("aspect") && !kl.includes("ratio") && !kl.includes("resolution") && !kl.includes("preset")) {
+        continue;
+      }
+      const choices = nodeOpts[k];
+      if (!Array.isArray(choices) || choices.length === 0) continue;
+
+      let bestOpt: string | null = null;
+      let bestDist = Infinity;
+      for (const opt of choices) {
+        const r = parseOptionAspectRatio(opt);
+        if (r === null) continue;
+        const dist = Math.abs(Math.log(r / targetRatio));
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestOpt = String(opt);
+        }
+      }
+      if (bestOpt !== null) {
+        promptJson[nid] = {
+          ...node,
+          inputs: { ...node.inputs, [k]: bestOpt },
+        };
+        return `#${nid} ${k} → ${bestOpt}`;
+      }
+    }
+  }
+
+  // Strategy 2: Fallback for workflows using direct numeric width/height on a latent node (e.g. EmptyLatentImage)
+  for (const nid of Object.keys(promptJson)) {
+    const node = promptJson[nid];
+    if (!node?.inputs) continue;
+    const ct = (node.class_type || "").toLowerCase();
+    if (!ct.includes("latent") && !ct.includes("resolution") && !ct.includes("size")) continue;
+    const curW = node.inputs.width;
+    const curH = node.inputs.height;
+    if (typeof curW === "number" && typeof curH === "number" && curW > 0 && curH > 0) {
+      const area = curW * curH;
+      const snap = (v: number) => Math.max(256, Math.min(4096, Math.round(v / 64) * 64));
+      const newW = snap(Math.sqrt(area * targetRatio));
+      const newH = snap(Math.sqrt(area / targetRatio));
+      promptJson[nid] = {
+        ...node,
+        inputs: { ...node.inputs, width: newW, height: newH },
+      };
+      return `#${nid} ${newW}×${newH}`;
+    }
+  }
+
+  return null;
+}
+
 export const WorkflowCreateModal: React.FC<Props> = ({
   comfyStatus,
   initialPrefill,
@@ -220,11 +308,24 @@ export const WorkflowCreateModal: React.FC<Props> = ({
             }
           }
         }
-        if (applied) {
+        let ratioSummary: string | null = null;
+        if (prefill.imageWidth && prefill.imageHeight) {
+          ratioSummary = autoAdjustWorkflowAspectRatio(
+            nextPrompt,
+            res.field_options || {},
+            prefill.imageWidth,
+            prefill.imageHeight
+          );
+        }
+        if (applied || ratioSummary) {
           onSubmitted(
             t(
-              `已自动填入转换后的提示词${prefill.nodeId ? `（节点 #${prefill.nodeId}）` : ""}，请检阅后点击创建`,
-              `Auto-filled converted prompt${prefill.nodeId ? ` (Node #${prefill.nodeId})` : ""}. Please review and click Generate.`
+              `已自动填入转换后的提示词${prefill.nodeId ? `（节点 #${prefill.nodeId}）` : ""}${
+                ratioSummary ? `，并按参考图比例自动调整 ${ratioSummary}` : ""
+              }，请检阅后点击创建`,
+              `Auto-filled converted prompt${prefill.nodeId ? ` (Node #${prefill.nodeId})` : ""}${
+                ratioSummary ? ` & matched ratio ${ratioSummary}` : ""
+              }. Please review and click Generate.`
             )
           );
         }

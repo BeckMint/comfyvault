@@ -28,6 +28,8 @@ export interface WorkflowPrefillPayload {
   nodeId?: string;
   inputKey?: string;
   text: string;
+  imageWidth?: number;
+  imageHeight?: number;
 }
 
 interface PromptNodeInfo {
@@ -74,12 +76,14 @@ export const PromptConverterModal: React.FC<Props> = ({
   const [sourceText, setSourceText] = useState(initialSourceText);
   const [referenceImage, setReferenceImage] = useState<File | null>(null);
   const [referencePreviewUrl, setReferencePreviewUrl] = useState<string | null>(null);
+  const [referenceDims, setReferenceDims] = useState<{ width: number; height: number } | null>(null);
   const [dragOverImage, setDragOverImage] = useState(false);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
 
   const attachReferenceFile = (file: File | null) => {
     if (!file) {
       setReferenceImage(null);
+      setReferenceDims(null);
       return;
     }
     if (!file.type.startsWith("image/")) {
@@ -92,11 +96,21 @@ export const PromptConverterModal: React.FC<Props> = ({
   useEffect(() => {
     if (!referenceImage) {
       setReferencePreviewUrl(null);
+      setReferenceDims(null);
       return;
     }
     const url = URL.createObjectURL(referenceImage);
     setReferencePreviewUrl(url);
+    let cancelled = false;
+    const img = new Image();
+    img.onload = () => {
+      if (!cancelled && img.naturalWidth > 0 && img.naturalHeight > 0) {
+        setReferenceDims({ width: img.naturalWidth, height: img.naturalHeight });
+      }
+    };
+    img.src = url;
     return () => {
+      cancelled = true;
       URL.revokeObjectURL(url);
     };
   }, [referenceImage]);
@@ -365,6 +379,8 @@ export const PromptConverterModal: React.FC<Props> = ({
           nodeId: res.target_node_id,
           inputKey: res.target_input_key,
           text: res.final_prompt,
+          imageWidth: referenceDims?.width,
+          imageHeight: referenceDims?.height,
         });
       } else {
         onToast(
@@ -731,6 +747,11 @@ export const PromptConverterModal: React.FC<Props> = ({
                         {t("大模型看图反推模式", "Vision Reverse-Prompt Mode")}
                       </span>
                       <span className="text-xs text-zinc-200 truncate">{referenceImage.name}</span>
+                      {referenceDims && (
+                        <span className="text-[10px] text-indigo-300/90 font-mono shrink-0">
+                          {referenceDims.width}×{referenceDims.height}
+                        </span>
+                      )}
                       <span className="text-[10px] text-zinc-500 shrink-0">{formatBytes(referenceImage.size)}</span>
                     </div>
                     <p className="text-[11px] text-zinc-400 leading-snug">
@@ -972,6 +993,8 @@ export const PromptConverterModal: React.FC<Props> = ({
                           nodeId: result.target_node_id,
                           inputKey: result.target_input_key,
                           text: result.final_prompt,
+                          imageWidth: referenceDims?.width,
+                          imageHeight: referenceDims?.height,
                         })
                       }
                       className="px-3 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-[11px] font-semibold text-white flex items-center gap-1"
