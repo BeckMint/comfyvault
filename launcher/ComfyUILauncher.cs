@@ -476,7 +476,7 @@ namespace ComfyUILauncher
             {
                 ProcessStartInfo psi = new ProcessStartInfo(
                     "powershell.exe",
-                    "-NoProfile -Command \"Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*ComfyUI*main.py*' } | Select-Object -ExpandProperty ProcessId\""
+                    "-NoProfile -Command \"Get-CimInstance Win32_Process -Filter \\\"Name LIKE 'python%'\\\" | Where-Object { $_.CommandLine -like '*ComfyUI*main.py*' } | Select-Object -ExpandProperty ProcessId\""
                 );
                 psi.UseShellExecute = false;
                 psi.RedirectStandardOutput = true;
