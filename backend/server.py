@@ -1067,6 +1067,7 @@ class VaultApp:
             except Exception as e:
                 return web.json_response({"error": f"读取工作流失败: {e}"}, status=400)
 
+        run_tag = uuid.uuid4().hex[:4].upper()
         instruction = build_conversion_instruction(
             source_text=source_text,
             model_family=detected_family,
@@ -1074,6 +1075,7 @@ class VaultApp:
             lang_pref=lang_pref,
             has_image=bool(saved_ref_image_path),
             concise=(provider == "local_qwenvl"),
+            run_tag=run_tag if provider != "local_qwenvl" else None,
         )
 
         try:
@@ -1090,6 +1092,7 @@ class VaultApp:
                     instruction,
                     show_window,
                     str(saved_ref_image_path) if saved_ref_image_path else None,
+                    run_tag,
                 )
             if not converted_part:
                 return web.json_response({"error": "未返回有效内容，请重试或检查模型状态"}, status=500)

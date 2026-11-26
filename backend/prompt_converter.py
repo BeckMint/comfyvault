@@ -123,10 +123,13 @@ def build_conversion_instruction(
     lang_pref: str = "auto",
     has_image: bool = False,
     concise: bool = False,
+    run_tag: Optional[str] = None,
 ) -> str:
     guide = choose_model_guide(model_family)
     out_lang = choose_output_language(model_family, lang_pref)
     src = (source_text or "").strip()
+    start_marker = f"<<<PROMPT_START_{run_tag}>>>" if run_tag else "<<<PROMPT_START>>>"
+    end_marker = f"<<<PROMPT_END_{run_tag}>>>" if run_tag else "<<<PROMPT_END>>>"
 
     if concise and has_image:
         # Compact, high-density prompt tailored for local 4B VLMs (2-3x faster & sharper instruction following)
@@ -148,10 +151,11 @@ def build_conversion_instruction(
             "- Consistent shot scale & crop boundary (if feet are visible, state full-body with ground margin below feet; never mix 'wide' with 'cropped tightly').\n"
             "- Camera height & vertical pitch relative to subject (worm's-eye/low-angle/eye-level/high-angle/top-down).\n"
             "- Camera horizontal azimuth (frontal/3-4/profile/over-shoulder/rear) vs torso direction, head turn & exact eye gaze.\n"
-            "- Subject placement in frame, lens focal length & perspective/foreshortening, depth of field.\n"
-            "THEN DESCRIBE: pose/action/hand gestures, expression/mood, hairstyle & wardrobe fabric details, "
+            "- Subject placement in frame (left third / centered / right third), lens focal length & perspective/foreshortening, depth of field.\n"
+            "THEN DESCRIBE ACCURATELY: exact hairstyle & bangs, exact clothing style/collar/footwear (never vague 'top'), "
+            "what each hand is doing or holding, pose/body action, expression/mood, "
             "background environment/props/foreground occlusion, lighting direction/contrast, color grading, film/photo style & story.\n"
-            "Refer to the subject neutrally ('the woman'/'she'). Output ONLY the prompt wrapped between <<<PROMPT_START>>> and <<<PROMPT_END>>>."
+            f"Refer to the subject neutrally ('the woman'/'she'). Output ONLY the prompt wrapped between {start_marker} and {end_marker}."
             f"{extra}"
         )
 
@@ -227,7 +231,7 @@ def build_conversion_instruction(
         "OUTPUT FORMAT RULES:\n"
         "- Treat this request independently from any earlier messages or images in this conversation.\n"
         "- Do NOT generate or return any image — output TEXT ONLY.\n"
-        "- Output ONLY the converted prompt text wrapped strictly between <<<PROMPT_START>>> and <<<PROMPT_END>>>.\n"
+        f"- Output ONLY the converted prompt text wrapped strictly between {start_marker} and {end_marker}.\n"
         "- Do NOT include explanations, markdown headings, bullet lists, or extra commentary outside the markers.\n\n"
         f"{task_block}"
     )
@@ -242,10 +246,16 @@ def _clean_prompt_artifacts(text: str) -> str:
     return cleaned
 
 
-def extract_marked_prompt(raw_text: str) -> str:
+def extract_marked_prompt(raw_text: str, run_tag: Optional[str] = None) -> str:
     if not raw_text:
         return ""
-    matches = re.findall(r"<<<PROMPT_START>>>\s*(.*?)\s*<<<PROMPT_END>>>", raw_text, re.DOTALL)
+    if run_tag:
+        pat = rf"<<<PROMPT_START_{re.escape(run_tag)}>>>\s*(.*?)\s*<<<PROMPT_END_{re.escape(run_tag)}>>>"
+        tag_matches = re.findall(pat, raw_text, re.DOTALL)
+        valid_tag = [m.strip() for m in tag_matches if len(m.strip()) >= 20 and m.strip().lower() != "and"]
+        if valid_tag:
+            return _clean_prompt_artifacts(valid_tag[-1])
+    matches = re.findall(r"<<<PROMPT_START(?:_[A-Za-z0-9]+)?>>>\s*(.*?)\s*<<<PROMPT_END(?:_[A-Za-z0-9]+)?>>>", raw_text, re.DOTALL)
     # Filter out the instruction echo ("and" / tiny placeholders) and pick the last real generated prompt
     valid = [m.strip() for m in matches if len(m.strip()) >= 20 and m.strip().lower() != "and"]
     if valid:
@@ -847,20 +857,29 @@ def _page_shows_session_limit(page: Any) -> bool:
         return False
 
 
-def _collect_marked_blocks_from_page(page: Any) -> List[str]:
-    """DOM-agnostic scan: collect all completed <<<PROMPT_START>>>...<<<PROMPT_END>>> prompt blocks currently on page."""
+def _collect_marked_blocks_from_page(page: Any, run_tag: Optional[str] = None) -> List[str]:
+    """DOM-agnostic scan: collect completed prompt blocks currently on page (scoped to run_tag if provided)."""
     try:
         full_text = page.evaluate("() => (document.querySelector('main') || document.body)?.innerText || ''")
         if not full_text:
             return []
-        matches = re.findall(r"<<<PROMPT_START>>>\s*(.*?)\s*<<<PROMPT_END>>>", full_text, re.DOTALL)
+        if run_tag:
+            pat = rf"<<<PROMPT_START_{re.escape(run_tag)}>>>\s*(.*?)\s*<<<PROMPT_END_{re.escape(run_tag)}>>>"
+        else:
+            pat = r"<<<PROMPT_START(?:_[A-Za-z0-9]+)?>>>\s*(.*?)\s*<<<PROMPT_END(?:_[A-Za-z0-9]+)?>>>"
+        matches = re.findall(pat, full_text, re.DOTALL)
         return [m.strip() for m in matches if len(m.strip()) >= 25 and m.strip().lower() != "and"]
     except Exception:
         return []
 
 
-def _extract_new_marked_from_page(page: Any, prev_blocks: List[str]) -> str:
-    """Return a newly generated <<<PROMPT_START>>>...<<<PROMPT_END>>> block that was not present before sending."""
+def _extract_new_marked_from_page(page: Any, prev_blocks: List[str], run_tag: Optional[str] = None) -> str:
+    """Return a newly generated prompt block that was not present before sending (strictly scoped to run_tag!)."""
+    if run_tag:
+        cur_tagged = _collect_marked_blocks_from_page(page, run_tag=run_tag)
+        if cur_tagged:
+            return f"<<<PROMPT_START_{run_tag}>>>\n{cur_tagged[-1]}\n<<<PROMPT_END_{run_tag}>>>"
+        return ""
     cur = _collect_marked_blocks_from_page(page)
     if not cur:
         return ""
@@ -876,6 +895,7 @@ def _wait_for_stable_reply(
     stop_selectors: List[str],
     timeout_sec: float = 95.0,
     prev_marked_blocks: Optional[List[str]] = None,
+    run_tag: Optional[str] = None,
 ) -> str:
     start = time.time()
     last_text = ""
@@ -896,8 +916,8 @@ def _wait_for_stable_reply(
                 except Exception:
                     pass
 
-            # 1) Universal DOM-agnostic fast path: detect a NEW <<<PROMPT_START>>>...<<<PROMPT_END>>> block
-            marked = _extract_new_marked_from_page(page, baseline_blocks)
+            # 1) Universal DOM-agnostic fast path: strictly match THIS turn's unique run_tag marker!
+            marked = _extract_new_marked_from_page(page, baseline_blocks, run_tag=run_tag)
             if marked:
                 if not is_generating:
                     return marked
@@ -910,13 +930,17 @@ def _wait_for_stable_reply(
                     last_marker_text = marked
                     marker_seen_since = time.time()
 
-            # 2) Selector-based reply tracking (for replies that omitted markers)
+            # 2) Selector-based reply tracking (only if run_tag wasn't echoed or reply omitted markers)
             loc = page.locator(reply_selector)
             cnt = loc.count()
             if cnt > prev_count:
                 cur_text = (loc.nth(cnt - 1).inner_text() or "").strip()
                 if cur_text:
-                    if "<<<PROMPT_END>>>" in cur_text and len(extract_marked_prompt(cur_text)) >= 20 and not is_generating:
+                    # Guard: never mistake an older turn's block for this turn's reply!
+                    if baseline_blocks and extract_marked_prompt(cur_text) in baseline_blocks:
+                        continue
+                    end_tok = f"<<<PROMPT_END_{run_tag}>>>" if run_tag else "<<<PROMPT_END>>>"
+                    if end_tok in cur_text and len(extract_marked_prompt(cur_text, run_tag=run_tag)) >= 20 and not is_generating:
                         return cur_text
                     if cur_text == last_text and not is_generating:
                         if stable_since == 0.0:
@@ -1164,6 +1188,7 @@ def convert_via_web_llm_sync(
     instruction_text: str,
     show_window: bool = False,
     image_path: Optional[str] = None,
+    run_tag: Optional[str] = None,
 ) -> str:
     """Invoke Gemini or ChatGPT web UI using the persistent local browser profile.
     Optionally attaches a local reference image for visual reverse-prompting.
@@ -1315,13 +1340,14 @@ def convert_via_web_llm_sync(
                         ],
                         timeout_sec=150.0 if image_path else 110.0,
                         prev_marked_blocks=prev_marked,
+                        run_tag=run_tag,
                     )
                     # Persist conversation URL so future runs reuse the same thread (up to MAX_TURNS_PER_SESSION)
                     time.sleep(0.5)
                     final_url = page.url or ""
                     if _is_valid_session_url("gemini", final_url):
                         _save_session("gemini", final_url, current_turns + 1)
-                    return extract_marked_prompt(raw_reply)
+                    return extract_marked_prompt(raw_reply, run_tag=run_tag)
 
                 else:
                     # ChatGPT
@@ -1407,12 +1433,13 @@ def convert_via_web_llm_sync(
                         ],
                         timeout_sec=150.0 if image_path else 110.0,
                         prev_marked_blocks=prev_marked,
+                        run_tag=run_tag,
                     )
                     time.sleep(0.5)
                     final_url = page.url or ""
                     if _is_valid_session_url("chatgpt", final_url):
                         _save_session("chatgpt", final_url, current_turns + 1)
-                    return extract_marked_prompt(raw_reply)
+                    return extract_marked_prompt(raw_reply, run_tag=run_tag)
             finally:
                 try:
                     ctx.close()
