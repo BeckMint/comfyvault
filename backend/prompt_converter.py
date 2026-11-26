@@ -122,10 +122,36 @@ def build_conversion_instruction(
     has_divider: bool,
     lang_pref: str = "auto",
     has_image: bool = False,
+    concise: bool = False,
 ) -> str:
     guide = choose_model_guide(model_family)
     out_lang = choose_output_language(model_family, lang_pref)
     src = (source_text or "").strip()
+
+    if concise and has_image:
+        # Compact, high-density prompt tailored for local 4B VLMs (2-3x faster & sharper instruction following)
+        excl = (
+            "STRICTLY OMIT: (1) reference person's facial features/bone structure/identity, "
+            "(2) body type/bust/waist/hips proportions, "
+            "(3) aspect ratio, vertical/horizontal framing words, or resolution (e.g. 9:16, 4:5, vertical portrait, 4K)."
+            if has_divider
+            else "STRICTLY OMIT aspect ratio, vertical/horizontal framing words, or resolution (handled by workflow node). Keep face & body neutral for LoRA."
+        )
+        extra = f"\nUser adjustments to apply: {src}" if src else ""
+        return (
+            f"Write a cohesive 2-3 paragraph ({out_lang}, ~180-260 words) image generation prompt for {model_family or 'Krea 2'} "
+            "reverse-engineered from the attached photo.\n"
+            f"{excl}\n"
+            "OPENING SENTENCES MUST EXACTLY CAPTURE:\n"
+            "- Exact shot scale & crop boundary (e.g. chest-up, waist-up, mid-thigh, full-body) + headroom.\n"
+            "- Camera height & vertical pitch relative to subject (worm's-eye/low-angle/eye-level/high-angle/top-down).\n"
+            "- Camera horizontal azimuth (frontal/3-4/profile/over-shoulder/rear) vs torso direction, head turn & exact eye gaze.\n"
+            "- Subject placement in frame, lens focal length & perspective/foreshortening, depth of field.\n"
+            "THEN DESCRIBE: pose/action/hand gestures, expression/mood, hairstyle & wardrobe fabric details, "
+            "background environment/props/foreground occlusion, lighting direction/contrast, color grading, film/photo style & story.\n"
+            "Refer to the subject neutrally ('the woman'/'she'). Output ONLY the prompt wrapped between <<<PROMPT_START>>> and <<<PROMPT_END>>>."
+            f"{extra}"
+        )
 
     if has_divider:
         constraint_block = (
@@ -1024,7 +1050,7 @@ def convert_via_local_qwenvl_sync(
                 "正在上传参考图到本地 ComfyUI...",
                 "Uploading reference image to local ComfyUI...",
             )
-            img_ref = _upload_image_to_comfy(image_path)
+            img_ref = _upload_image_to_comfy(image_path, max_side=672)
             graph["1"] = {
                 "class_type": "LoadImage",
                 "inputs": {"image": img_ref},
@@ -1038,11 +1064,11 @@ def convert_via_local_qwenvl_sync(
             "device": "auto",
             "preset_prompt": chosen_preset,
             "custom_prompt": f"[PORTRAIT_STRICT_ANALYSIS]\n{instruction_text}",
-            "max_tokens": 768,
-            "temperature": 0.45,
+            "max_tokens": 480,
+            "temperature": 0.4,
             "top_p": 0.9,
             "num_beams": 1,
-            "repetition_penalty": 1.15,
+            "repetition_penalty": 1.05,
             "frame_count": 1,
             "keep_model_loaded": False,
             "seed": random.randint(2, 2_000_000_000),

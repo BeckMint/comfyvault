@@ -1068,6 +1068,7 @@ class VaultApp:
                 has_divider=has_divider,
                 lang_pref=lang_pref,
                 has_image=bool(temp_image_path),
+                concise=(provider == "local_qwenvl"),
             )
 
             try:
