@@ -250,6 +250,10 @@ export const LightboxModal: React.FC<Props> = ({ items, currentIndex, onChangeIn
 
   const rafIdRef = useRef<number | null>(null);
 
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent("comfyvault:pause-bg-videos"));
+  }, [item?.id]);
+
   const computeFitScale = (w: number, h: number) => {
     const vw = window.innerWidth;
     const vh = window.innerHeight;

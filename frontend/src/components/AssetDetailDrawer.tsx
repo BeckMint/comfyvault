@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   BookmarkPlus,
   Check,
@@ -80,6 +80,28 @@ export const AssetDetailDrawer: React.FC<Props> = ({
   const [rerolling, setRerolling] = useState(false);
   const [lightbox, setLightbox] = useState(false);
   const [showRefCompare, setShowRefCompare] = useState(false);
+  const drawerVideoRef = useRef<HTMLVideoElement | null>(null);
+
+  useEffect(() => {
+    const pauseDrawer = () => {
+      drawerVideoRef.current?.pause();
+    };
+    window.addEventListener("comfyvault:pause-bg-videos", pauseDrawer);
+    window.addEventListener("comfyvault:pause-drawer-video", pauseDrawer);
+    return () => {
+      window.removeEventListener("comfyvault:pause-bg-videos", pauseDrawer);
+      window.removeEventListener("comfyvault:pause-drawer-video", pauseDrawer);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!lightbox) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setLightbox(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [lightbox]);
 
   const sortedPrompts = useMemo(() => {
     if (!detail?.prompts) return [];
@@ -243,13 +265,22 @@ export const AssetDetailDrawer: React.FC<Props> = ({
           <div className="relative rounded-xl overflow-hidden bg-[#080a0f] border border-zinc-800 flex items-center justify-center max-h-[340px]">
             {detail.media_type === "video" ? (
               <video
+                ref={drawerVideoRef}
                 key={detail.id}
                 src={detail.media_url}
                 controls
                 loop
                 playsInline
                 preload="metadata"
-                className="max-h-[340px] w-full object-contain"
+                title={t("双击放大播放", "Double-click to enlarge")}
+                onPlay={() => window.dispatchEvent(new CustomEvent("comfyvault:pause-list-videos"))}
+                onDoubleClick={(e) => {
+                  e.stopPropagation();
+                  drawerVideoRef.current?.pause();
+                  window.dispatchEvent(new CustomEvent("comfyvault:pause-bg-videos"));
+                  setLightbox(true);
+                }}
+                className="max-h-[340px] w-full object-contain cursor-zoom-in"
               />
             ) : (
               <img
@@ -708,13 +739,33 @@ export const AssetDetailDrawer: React.FC<Props> = ({
         />
       )}
 
-      {/* Lightbox for full image view */}
-      {lightbox && detail.media_type === "image" && (
+      {/* Lightbox for full image or video view */}
+      {lightbox && (
         <div
           onClick={() => setLightbox(false)}
-          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center p-6 cursor-zoom-out"
+          className="fixed inset-0 z-[70] bg-black/90 backdrop-blur-sm flex items-center justify-center p-6 cursor-zoom-out"
         >
-          <img src={detail.media_url} alt={detail.filename} className="max-w-full max-h-full object-contain rounded-lg" />
+          <button
+            type="button"
+            onClick={() => setLightbox(false)}
+            className="fixed top-4 right-4 z-10 p-2 rounded-xl bg-black/70 hover:bg-zinc-800 border border-white/15 text-zinc-200 hover:text-white"
+            title={t("关闭 (Esc)", "Close (Esc)")}
+          >
+            <X className="w-5 h-5" />
+          </button>
+          {detail.media_type === "video" ? (
+            <video
+              src={detail.media_url}
+              controls
+              autoPlay
+              loop
+              playsInline
+              onClick={(e) => e.stopPropagation()}
+              className="max-w-[92vw] max-h-[88vh] rounded-xl shadow-2xl cursor-default"
+            />
+          ) : (
+            <img src={detail.media_url} alt={detail.filename} className="max-w-full max-h-full object-contain rounded-lg" />
+          )}
         </div>
       )}
     </>

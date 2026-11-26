@@ -363,7 +363,23 @@ export const VirtualMasonry: React.FC<Props> = ({
   const rafRef = useRef<number | null>(null);
 
   const handleTogglePlayVideo = useCallback((id: number) => {
-    setPlayingVideoId((prev) => (prev === id ? null : id));
+    setPlayingVideoId((prev) => {
+      const next = prev === id ? null : id;
+      if (next !== null) {
+        window.dispatchEvent(new CustomEvent("comfyvault:pause-drawer-video"));
+      }
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    const pauseList = () => setPlayingVideoId(null);
+    window.addEventListener("comfyvault:pause-bg-videos", pauseList);
+    window.addEventListener("comfyvault:pause-list-videos", pauseList);
+    return () => {
+      window.removeEventListener("comfyvault:pause-bg-videos", pauseList);
+      window.removeEventListener("comfyvault:pause-list-videos", pauseList);
+    };
   }, []);
 
   // Marquee drag-selection state (in container scroll coordinates)
