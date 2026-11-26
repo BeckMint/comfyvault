@@ -166,15 +166,17 @@ const AssetCard = React.memo(function AssetCard({
           {item.reference_image_url && onOpenRefCompare && (
             <button
               type="button"
-              title={t("分屏对比反推原图与生成图", "Split compare reference image vs generated output")}
+              title={t("对比原图", "Compare Ref")}
               onClick={(e) => {
                 e.stopPropagation();
                 onOpenRefCompare(item);
               }}
-              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-500/90 hover:bg-amber-400 backdrop-blur-sm text-[10px] font-semibold text-black shadow"
+              className="group/ref inline-flex items-center gap-1 p-1 hover:px-1.5 rounded-md bg-black/70 hover:bg-amber-500/95 backdrop-blur-sm text-[10px] font-semibold text-amber-300 hover:text-black border border-amber-400/45 shadow transition-all"
             >
-              <Columns2 className="w-3 h-3" />
-              {t("对比原图", "Ref")}
+              <Columns2 className="w-3.5 h-3.5 shrink-0" />
+              <span className="hidden group-hover/ref:inline whitespace-nowrap">
+                {t("对比原图", "Compare Ref")}
+              </span>
             </button>
           )}
           {item.flag === "pick" && (
