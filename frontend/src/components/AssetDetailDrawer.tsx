@@ -243,10 +243,12 @@ export const AssetDetailDrawer: React.FC<Props> = ({
           <div className="relative rounded-xl overflow-hidden bg-[#080a0f] border border-zinc-800 flex items-center justify-center max-h-[340px]">
             {detail.media_type === "video" ? (
               <video
+                key={detail.id}
                 src={detail.media_url}
                 controls
-                autoPlay
                 loop
+                playsInline
+                preload="metadata"
                 className="max-h-[340px] w-full object-contain"
               />
             ) : (

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, Columns2, Eye, EyeOff, Film, Layers, Star, ThumbsDown, ThumbsUp } from "lucide-react";
+import { Check, Columns2, Eye, EyeOff, Film, Layers, Pause, Play, Star, ThumbsDown, ThumbsUp } from "lucide-react";
 import { useI18n } from "../i18n";
 import type { AssetListItem } from "../types";
 
@@ -40,6 +40,8 @@ const AssetCard = React.memo(function AssetCard({
   isSelected,
   isChecked,
   isMultiSelect,
+  isPlayingVideo,
+  onTogglePlayVideo,
   onSelect,
   onDoubleClickAsset,
   onToggleCheck,
@@ -53,6 +55,8 @@ const AssetCard = React.memo(function AssetCard({
   isSelected: boolean;
   isChecked: boolean;
   isMultiSelect: boolean;
+  isPlayingVideo: boolean;
+  onTogglePlayVideo: (id: number) => void;
   onSelect: (a: AssetListItem) => void;
   onDoubleClickAsset: (a: AssetListItem) => void;
   onToggleCheck: (id: number) => void;
@@ -65,27 +69,24 @@ const AssetCard = React.memo(function AssetCard({
   const { t } = useI18n();
   const { item, x, y, w, h } = placed;
   const mediaH = h - FOOTER_H;
-  const [hoverVideo, setHoverVideo] = useState(false);
-  const hoverTimer = useRef<number | null>(null);
-
-  const handleMouseEnter = () => {
-    if (item.media_type !== "video") return;
-    hoverTimer.current = window.setTimeout(() => setHoverVideo(true), 180);
-  };
-
-  const handleMouseLeave = () => {
-    if (hoverTimer.current) {
-      window.clearTimeout(hoverTimer.current);
-      hoverTimer.current = null;
-    }
-    if (hoverVideo) setHoverVideo(false);
-  };
+  const [videoActivated, setVideoActivated] = useState(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
 
   useEffect(() => {
-    return () => {
-      if (hoverTimer.current) window.clearTimeout(hoverTimer.current);
-    };
-  }, []);
+    if (isPlayingVideo && !videoActivated) {
+      setVideoActivated(true);
+    }
+  }, [isPlayingVideo, videoActivated]);
+
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (isPlayingVideo) {
+      v.play().catch(() => {});
+    } else {
+      v.pause();
+    }
+  }, [isPlayingVideo, videoActivated]);
 
   const firstLora = item.loras?.[0]?.name?.split("/").pop()?.replace(/\.safetensors$/i, "");
 
@@ -114,8 +115,6 @@ const AssetCard = React.memo(function AssetCard({
         e.stopPropagation();
         onDoubleClickAsset(item);
       }}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
     >
       {/* Media Box */}
       <div className="relative w-full bg-[#0e1017] overflow-hidden" style={{ height: mediaH }}>
@@ -128,15 +127,39 @@ const AssetCard = React.memo(function AssetCard({
           draggable={false}
         />
 
-        {hoverVideo && item.media_type === "video" && (
+        {videoActivated && item.media_type === "video" && (
           <video
+            ref={videoRef}
             src={item.media_url}
-            autoPlay
             loop
-            muted
             playsInline
             className="absolute inset-0 w-full h-full object-cover"
           />
+        )}
+
+        {/* Center Play / Pause button for videos — clicking card outside this button does NOT play */}
+        {item.media_type === "video" && (
+          <button
+            type="button"
+            title={isPlayingVideo ? t("暂停播放", "Pause video") : t("播放视频", "Play video")}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (!videoActivated) setVideoActivated(true);
+              onTogglePlayVideo(item.id);
+            }}
+            onDoubleClick={(e) => e.stopPropagation()}
+            className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10 w-11 h-11 rounded-full flex items-center justify-center border backdrop-blur-sm shadow-lg transition-all ${
+              isPlayingVideo
+                ? "bg-black/45 border-white/30 text-white opacity-35 hover:opacity-100 group-hover:opacity-90"
+                : "bg-black/65 hover:bg-indigo-600/90 border-white/40 text-white opacity-90 hover:scale-105"
+            }`}
+          >
+            {isPlayingVideo ? (
+              <Pause className="w-5 h-5 fill-current" />
+            ) : (
+              <Play className="w-5 h-5 fill-current ml-0.5" />
+            )}
+          </button>
         )}
 
         {/* Top-left Badges */}
@@ -336,7 +359,12 @@ export const VirtualMasonry: React.FC<Props> = ({
   const [containerWidth, setContainerWidth] = useState(960);
   const [viewportHeight, setViewportHeight] = useState(800);
   const [scrollTop, setScrollTop] = useState(0);
+  const [playingVideoId, setPlayingVideoId] = useState<number | null>(null);
   const rafRef = useRef<number | null>(null);
+
+  const handleTogglePlayVideo = useCallback((id: number) => {
+    setPlayingVideoId((prev) => (prev === id ? null : id));
+  }, []);
 
   // Marquee drag-selection state (in container scroll coordinates)
   const [marquee, setMarquee] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
@@ -545,6 +573,8 @@ export const VirtualMasonry: React.FC<Props> = ({
               isSelected={selectedId === placed.item.id}
               isChecked={checkedIds.has(placed.item.id)}
               isMultiSelect={isMultiSelect}
+              isPlayingVideo={playingVideoId === placed.item.id}
+              onTogglePlayVideo={handleTogglePlayVideo}
               onSelect={onSelect}
               onDoubleClickAsset={onDoubleClickAsset}
               onToggleCheck={onToggleCheck}
