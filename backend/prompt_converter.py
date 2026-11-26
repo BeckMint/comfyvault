@@ -133,17 +133,19 @@ def build_conversion_instruction(
         excl = (
             "STRICTLY OMIT: (1) reference person's facial features/bone structure/identity, "
             "(2) body type/bust/waist/hips proportions, "
-            "(3) aspect ratio, vertical/horizontal framing words, or resolution (e.g. 9:16, 4:5, vertical portrait, 4K)."
+            "(3) aspect ratio, vertical/horizontal framing words, or resolution (e.g. 9:16, 4:5, vertical portrait, 4K), "
+            "(4) any watermarks, date stamps, logos, text overlays, or @handles visible in the photo."
             if has_divider
-            else "STRICTLY OMIT aspect ratio, vertical/horizontal framing words, or resolution (handled by workflow node). Keep face & body neutral for LoRA."
+            else "STRICTLY OMIT aspect ratio/resolution words and any watermarks, date stamps, logos, or @handles. Keep face & body neutral for LoRA."
         )
         extra = f"\nUser adjustments to apply: {src}" if src else ""
         return (
             f"Write a cohesive 2-3 paragraph ({out_lang}, ~180-260 words) image generation prompt for {model_family or 'Krea 2'} "
             "reverse-engineered from the attached photo.\n"
             f"{excl}\n"
-            "OPENING SENTENCES MUST EXACTLY CAPTURE:\n"
-            "- Exact shot scale & crop boundary (e.g. chest-up, waist-up, mid-thigh, full-body) + headroom.\n"
+            "OPENING SENTENCES MUST EXACTLY LOCK SUBJECT-TO-FRAME SCALE & CAMERA GEOMETRY (no contradictory crop terms):\n"
+            "- Exact subject scale in frame: estimate what % of frame height the subject occupies (e.g. ~45% distant, ~65% medium, ~85% tight) and exact top/bottom/side empty margin.\n"
+            "- Consistent shot scale & crop boundary (if feet are visible, state full-body with ground margin below feet; never mix 'wide' with 'cropped tightly').\n"
             "- Camera height & vertical pitch relative to subject (worm's-eye/low-angle/eye-level/high-angle/top-down).\n"
             "- Camera horizontal azimuth (frontal/3-4/profile/over-shoulder/rear) vs torso direction, head turn & exact eye gaze.\n"
             "- Subject placement in frame, lens focal length & perspective/foreshortening, depth of field.\n"
@@ -161,6 +163,7 @@ def build_conversion_instruction(
             "1. Facial shape, facial features & identity (face shape, eyes, nose, lips, jawline, skin tone, ethnicity, age, beauty adjectives).\n"
             "2. Body type & body proportions (bust/chest size, waist, hips, height, build, slim/curvy/voluptuous descriptions).\n"
             "3. Aspect ratio, canvas orientation, framing ratio, or resolution (e.g., 9:16, 4:5, 2:3, 16:9, 'vertical portrait framing', 'horizontal widescreen', 'square format', '4K') — the workflow's resolution node already controls the canvas aspect ratio.\n"
+            "4. Any watermarks, date stamps, corner logos, text overlays, or social media @handles present in the reference photo.\n"
             "MUST FAITHFULLY PRESERVE & RICHLY DEVELOP:\n"
             "- Exact composition, shot scale, crop boundaries, camera height/pitch/azimuth angle relative to the subject, and lens focal length/perspective\n"
             "- Background environment, architectural/natural setting, props & spatial layering\n"
@@ -194,7 +197,7 @@ def build_conversion_instruction(
         camera_lock_block = (
             "UNIFIED IMAGE REVERSE-PROMPTING FIDELITY RULES (APPLIES TO ALL ENGINES — HIGHEST PRIORITY, STATE IN OPENING PARAGRAPH):\n"
             "Do NOT default to generic 'eye-level 50mm' descriptions. Faithfully reverse-engineer every photographic and compositional element from the reference image:\n"
-            "1. Shot Scale & Crop Boundaries (NO aspect ratio/orientation words): state precisely where the frame crops the subject (e.g., close-up, chest-up, waist-up, mid-thigh, knee-up, full-body with feet visible/cropped) and headroom/negative space — NEVER mention aspect ratio, vertical/horizontal framing, or resolution (handled by workflow node).\n"
+            "1. Subject-to-Frame Scale & Consistent Crop Boundaries (NO aspect ratio/orientation words): explicitly estimate what percentage of the frame height the subject occupies (e.g., small ~40-50% figure in a wide scene, medium ~60-70% with generous top/bottom margins, large ~80-90% filling the frame), state exact crop boundaries consistently (if feet are visible, state full-body with visible ground margin below feet; NEVER contradict 'wide' with 'cropped tightly'), and describe exact headroom and side breathing room — NEVER mention aspect ratio, vertical/horizontal framing, or resolution (handled by workflow node).\n"
             "2. Camera Elevation & Vertical Pitch Relative to Subject: specify exact camera height and tilt (ground-level worm's-eye looking sharply up, low-angle from knee/waist level looking up, strict eye-level, slightly elevated high-angle looking down, steep overhead/top-down bird's-eye).\n"
             "3. Horizontal Viewing Angle & Subject Orientation: explicitly separate (a) camera azimuth relative to the subject (dead-on frontal, 3/4 front-left or front-right, strict side profile, over-the-shoulder, 3/4 rear view looking back, full back view), (b) torso orientation, (c) head turn angle, and (d) exact eye-gaze direction & facial expression.\n"
             "4. Subject Placement, Scale & Horizon: state where the subject sits in the frame (centered, left/right third, lower-left/upper-right, diagonal axis), approximate frame occupancy, horizon line height (low/mid/high), and any Dutch tilt / camera roll.\n"
