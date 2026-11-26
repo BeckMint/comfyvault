@@ -30,6 +30,7 @@ export interface WorkflowPrefillPayload {
   text: string;
   imageWidth?: number;
   imageHeight?: number;
+  referenceImageName?: string;
 }
 
 interface PromptNodeInfo {
@@ -189,6 +190,8 @@ export const PromptConverterModal: React.FC<Props> = ({
     target_input_key: string;
     workflow_path: string;
     model_family: string;
+    reference_image?: string | null;
+    reference_image_url?: string | null;
   } | null>(null);
 
   const pollStatus = () => {
@@ -381,6 +384,7 @@ export const PromptConverterModal: React.FC<Props> = ({
           text: res.final_prompt,
           imageWidth: referenceDims?.width,
           imageHeight: referenceDims?.height,
+          referenceImageName: res.reference_image || undefined,
         });
       } else {
         onToast(
@@ -995,6 +999,7 @@ export const PromptConverterModal: React.FC<Props> = ({
                           text: result.final_prompt,
                           imageWidth: referenceDims?.width,
                           imageHeight: referenceDims?.height,
+                          referenceImageName: result.reference_image || undefined,
                         })
                       }
                       className="px-3 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-[11px] font-semibold text-white flex items-center gap-1"

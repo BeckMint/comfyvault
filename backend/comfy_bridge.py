@@ -42,6 +42,7 @@ class ComfyBridge:
         self._start_times: Dict[str, float] = {}
         self._prompt_node_titles: Dict[str, Dict[str, str]] = {}
         self._lineage_map: Dict[str, int] = {}
+        self._ref_image_map: Dict[str, str] = {}
         self._task: Optional[asyncio.Task] = None
         self._stopped = False
         self.scanner.set_comfy_executing_check(
@@ -236,6 +237,7 @@ class ComfyBridge:
         started = self._start_times.pop(prompt_id, None)
         gen_duration = round(time.time() - started, 2) if started else None
         parent_id = self._lineage_map.pop(prompt_id, None)
+        ref_image = self._ref_image_map.pop(prompt_id, None)
 
         outputs = entry.get("outputs") or {}
         indexed_ids = []
@@ -258,6 +260,7 @@ class ComfyBridge:
                             "comfy_version": self.state.get("comfy_version") or self.local_git_version,
                             "gen_duration_sec": gen_duration,
                             "parent_id": parent_id,
+                            "reference_image": ref_image,
                             "prompt_json": prompt_json,
                             "workflow_json": workflow_json,
                         }
@@ -273,6 +276,7 @@ class ComfyBridge:
         prompt_json: Dict[str, Any],
         workflow_json: Optional[Dict[str, Any]] = None,
         parent_id: Optional[int] = None,
+        reference_image: Optional[str] = None,
     ) -> Dict[str, Any]:
         payload: Dict[str, Any] = {
             "prompt": prompt_json,
@@ -311,6 +315,8 @@ class ComfyBridge:
                     self._prompt_node_titles[pid] = titles
                     if parent_id:
                         self._lineage_map[pid] = parent_id
+                    if reference_image:
+                        self._ref_image_map[pid] = reference_image
                 return body
 
     async def interrupt_execution(self) -> None:
@@ -344,6 +350,7 @@ class ComfyBridge:
         *,
         randomize_seed: bool = True,
         batch_count: int = 1,
+        reference_image: Optional[str] = None,
     ) -> List[str]:
         """Submit a pre-wired workflow prompt with user-edited node inputs to ComfyUI."""
         batch_count = max(1, min(8, int(batch_count)))
@@ -358,7 +365,7 @@ class ComfyBridge:
                         for k, v in list(inputs.items()):
                             if k.lower() in ("seed", "noise_seed", "seed_num", "random_seed") and isinstance(v, (int, float)):
                                 inputs[k] = seed_val
-            res = await self.submit_prompt(run_prompt, workflow_json, parent_id=None)
+            res = await self.submit_prompt(run_prompt, workflow_json, parent_id=None, reference_image=reference_image)
             if res.get("prompt_id"):
                 prompt_ids.append(res["prompt_id"])
         return prompt_ids
@@ -390,7 +397,9 @@ class ComfyBridge:
                         for k, v in list(inputs.items()):
                             if k.lower() in ("seed", "noise_seed", "seed_num", "random_seed") and isinstance(v, (int, float)):
                                 inputs[k] = new_seed
-            res = await self.submit_prompt(patched, raw_workflow, parent_id=asset_id)
+            res = await self.submit_prompt(
+                patched, raw_workflow, parent_id=asset_id, reference_image=detail.get("reference_image")
+            )
             if res.get("prompt_id"):
                 prompt_ids.append(res["prompt_id"])
         return prompt_ids
@@ -490,7 +499,9 @@ class ComfyBridge:
                             if k.lower() in ("seed", "noise_seed", "seed_num", "random_seed") and isinstance(v, (int, float)):
                                 inputs[k] = seed_val
 
-            res = await self.submit_prompt(run_prompt, raw_workflow, parent_id=asset_id)
+            res = await self.submit_prompt(
+                run_prompt, raw_workflow, parent_id=asset_id, reference_image=detail.get("reference_image")
+            )
             if res.get("prompt_id"):
                 prompt_ids.append(res["prompt_id"])
 

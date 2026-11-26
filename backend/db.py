@@ -179,6 +179,9 @@ class VaultDB:
             if "is_hidden" not in cols:
                 conn.execute("ALTER TABLE assets ADD COLUMN is_hidden INTEGER NOT NULL DEFAULT 0")
                 conn.commit()
+            if "reference_image" not in cols:
+                conn.execute("ALTER TABLE assets ADD COLUMN reference_image TEXT")
+                conn.commit()
             conn.execute("CREATE INDEX IF NOT EXISTS idx_assets_family ON assets(is_deleted, model_family)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_assets_hidden ON assets(is_deleted, is_hidden)")
             conn.commit()
@@ -223,7 +226,7 @@ class VaultDB:
             conn = self._conn()
             for record in records:
                 existing = conn.execute(
-                    "SELECT id, comfy_version, gen_duration_sec, parent_id, raw_prompt_json, prompts_json FROM assets WHERE rel_path = ?",
+                    "SELECT id, comfy_version, gen_duration_sec, parent_id, reference_image, raw_prompt_json, prompts_json FROM assets WHERE rel_path = ?",
                     (record["rel_path"],),
                 ).fetchone()
 
@@ -238,6 +241,9 @@ class VaultDB:
                 parent_id = record.get("parent_id")
                 if parent_id is None and existing:
                     parent_id = existing["parent_id"]
+                reference_image = record.get("reference_image")
+                if not reference_image and existing:
+                    reference_image = existing["reference_image"]
 
                 # Guard against disk re-scans (e.g. lossless WebP saved without EXIF prompt metadata)
                 # wiping out rich prompt/LoRA/model metadata previously captured from ComfyUI /history!
@@ -259,6 +265,7 @@ class VaultDB:
                             duration=?, fps=?, thumb_name=COALESCE(?, thumb_name),
                             comfy_version=?, gen_duration_sec=?,
                             parent_id=COALESCE(?, parent_id),
+                            reference_image=COALESCE(?, reference_image),
                             is_deleted=0
                         WHERE id=?
                         """,
@@ -279,6 +286,7 @@ class VaultDB:
                             comfy_version,
                             gen_dur,
                             parent_id,
+                            reference_image,
                             asset_id,
                         ),
                     )
@@ -322,6 +330,7 @@ class VaultDB:
                     params.get("sampler"),
                     params.get("scheduler"),
                     parent_id,
+                    reference_image,
                 )
 
                 if existing:
@@ -340,6 +349,7 @@ class VaultDB:
                             raw_workflow_json=COALESCE(?, raw_workflow_json),
                             seed=?, steps=?, cfg=?, sampler=?, scheduler=?,
                             parent_id=COALESCE(?, parent_id),
+                            reference_image=COALESCE(?, reference_image),
                             is_deleted=0
                         WHERE id=?
                         """,
@@ -356,8 +366,8 @@ class VaultDB:
                             primary_prompt, all_prompts_text, prompts_json, models_json,
                             loras_json, params_json, seed_targets_json, param_targets_json,
                             raw_prompt_json, raw_workflow_json,
-                            seed, steps, cfg, sampler, scheduler, parent_id
-                        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                            seed, steps, cfg, sampler, scheduler, parent_id, reference_image
+                        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                         """,
                         vals,
                     )
@@ -637,6 +647,7 @@ class VaultDB:
                        a.recipe_hash, a.base_model, a.primary_prompt, a.loras_json,
                        a.seed, a.steps, a.cfg, a.sampler, a.rating, a.flag, a.notes, a.parent_id,
                        COALESCE(a.is_hidden, 0) AS is_hidden,
+                       a.reference_image,
                        a.grp_count AS recipe_count
                 FROM ranked a
                 WHERE a.rn = 1
@@ -655,6 +666,7 @@ class VaultDB:
                        a.recipe_hash, a.base_model, a.primary_prompt, a.loras_json,
                        a.seed, a.steps, a.cfg, a.sampler, a.rating, a.flag, a.notes, a.parent_id,
                        COALESCE(a.is_hidden, 0) AS is_hidden,
+                       a.reference_image,
                        CASE WHEN a.recipe_hash IS NULL THEN 1
                             ELSE (SELECT COUNT(*) FROM assets b WHERE b.is_deleted = 0 AND b.recipe_hash = a.recipe_hash)
                        END AS recipe_count
@@ -728,6 +740,8 @@ class VaultDB:
                     "notes": r["notes"],
                     "parent_id": r["parent_id"],
                     "is_hidden": int(r["is_hidden"] or 0),
+                    "reference_image": r["reference_image"],
+                    "reference_image_url": f"/api/ref-images/{r['reference_image']}" if r["reference_image"] else None,
                     "tags": tags_map.get(r["id"], []),
                 }
             )
@@ -842,6 +856,8 @@ class VaultDB:
             "fps": r["fps"],
             "thumb_url": f"/api/thumbs/{r['thumb_name']}" if r["thumb_name"] else f"/api/thumb-by-id/{r['id']}",
             "media_url": f"/api/media/{r['id']}",
+            "reference_image": r["reference_image"],
+            "reference_image_url": f"/api/ref-images/{r['reference_image']}" if r["reference_image"] else None,
             "comfy_version": r["comfy_version"],
             "gen_duration_sec": r["gen_duration_sec"],
             "workflow_hash": r["workflow_hash"],

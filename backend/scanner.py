@@ -337,6 +337,7 @@ class AssetScanner:
             "comfy_version": comfy_version,
             "gen_duration_sec": ov.get("gen_duration_sec"),
             "parent_id": ov.get("parent_id"),
+            "reference_image": ov.get("reference_image"),
             "workflow_hash": parsed["workflow_hash"],
             "workflow_name": parsed["workflow_name"],
             "recipe_hash": parsed["recipe_hash"],

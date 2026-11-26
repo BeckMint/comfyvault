@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   BookmarkPlus,
   Check,
+  Columns2,
   Copy,
   Download,
   FolderSearch,
@@ -19,6 +20,7 @@ import {
 import { api, formatBytes, formatTime } from "../api";
 import { useI18n } from "../i18n";
 import type { AssetDetail, ComfyStatus, PromptNodeEntry } from "../types";
+import { RefCompareModal } from "./RefCompareModal";
 
 interface Props {
   assetId: number;
@@ -77,6 +79,7 @@ export const AssetDetailDrawer: React.FC<Props> = ({
   const [rerollBatch, setRerollBatch] = useState(1);
   const [rerolling, setRerolling] = useState(false);
   const [lightbox, setLightbox] = useState(false);
+  const [showRefCompare, setShowRefCompare] = useState(false);
 
   const sortedPrompts = useMemo(() => {
     if (!detail?.prompts) return [];
@@ -298,6 +301,25 @@ export const AssetDetailDrawer: React.FC<Props> = ({
               {t("微调参数派生新图", "Remix Parameters")}
             </button>
           </div>
+
+          {/* Reference Image Split-Compare Button (for reverse-prompted outputs) */}
+          {detail.reference_image_url && (
+            <button
+              type="button"
+              onClick={() => setShowRefCompare(true)}
+              className="w-full py-2 px-3 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-100 text-xs font-semibold flex items-center justify-between gap-2.5 transition-colors"
+            >
+              <span className="flex items-center gap-2">
+                <Columns2 className="w-4 h-4 text-amber-300 shrink-0" />
+                {t("分屏对比反推原图", "Split Compare with Reference Image")}
+              </span>
+              <img
+                src={detail.reference_image_url}
+                alt="ref"
+                className="w-7 h-7 rounded object-cover border border-amber-400/50 shrink-0"
+              />
+            </button>
+          )}
 
           {/* Rating, Flags & Tags */}
           <div className="p-3 rounded-xl bg-[#151925] border border-zinc-800/80 space-y-3">
@@ -674,6 +696,15 @@ export const AssetDetailDrawer: React.FC<Props> = ({
           </div>
         </div>
       </aside>
+
+      {/* Reference Image Split-Compare Modal */}
+      {showRefCompare && detail.reference_image_url && (
+        <RefCompareModal
+          detail={detail}
+          onClose={() => setShowRefCompare(false)}
+          onOpenRemix={() => onOpenRemix(detail)}
+        />
+      )}
 
       {/* Lightbox for full image view */}
       {lightbox && detail.media_type === "image" && (

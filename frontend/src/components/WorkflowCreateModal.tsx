@@ -197,6 +197,7 @@ export const WorkflowCreateModal: React.FC<Props> = ({
   const [showSnippets, setShowSnippets] = useState(false);
   const [focusedField, setFocusedField] = useState<{ nid: string; key: string } | null>(null);
   const [uploadedPreviews, setUploadedPreviews] = useState<Record<string, string>>({});
+  const [linkedRefImage, setLinkedRefImage] = useState<string | null>(initialPrefill?.referenceImageName || null);
   const [pinnedPaths, setPinnedPaths] = useState<Set<string>>(() => {
     try {
       const raw = localStorage.getItem("comfyvault_pinned_workflows");
@@ -279,6 +280,9 @@ export const WorkflowCreateModal: React.FC<Props> = ({
 
   const selectFile = async (filePath: string, prefill?: WorkflowPrefillPayload | null) => {
     setSelectedPath(filePath);
+    if (prefill?.referenceImageName) {
+      setLinkedRefImage(prefill.referenceImageName);
+    }
     setLoadingWf(true);
     try {
       const res = await api.loadWorkflowFile(filePath);
@@ -472,6 +476,7 @@ export const WorkflowCreateModal: React.FC<Props> = ({
         workflow_json: workflowJson,
         randomize_seed: randomizeSeed,
         batch_count: batchCount,
+        reference_image: linkedRefImage || undefined,
       });
       onSubmitted(
         t(

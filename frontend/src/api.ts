@@ -178,6 +178,7 @@ export const api = {
     workflow_json?: any;
     randomize_seed: boolean;
     batch_count: number;
+    reference_image?: string;
   }) => req<{ ok: boolean; prompt_ids: string[] }>("/api/workflows/run", { method: "POST", body: JSON.stringify(payload) }),
 
   uploadComfyImage: async (file: File) => {
@@ -283,6 +284,8 @@ export const api = {
       workflow_path: string;
       target_node_id: string;
       target_input_key: string;
+      reference_image?: string | null;
+      reference_image_url?: string | null;
     };
     if (payload.image) {
       const fd = new FormData();

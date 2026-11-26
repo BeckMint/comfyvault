@@ -43,6 +43,8 @@ export interface AssetListItem {
   notes: string;
   parent_id: number | null;
   is_hidden?: number;
+  reference_image?: string | null;
+  reference_image_url?: string | null;
   tags: TagItem[];
 }
 

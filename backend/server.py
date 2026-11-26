@@ -492,11 +492,15 @@ class VaultApp:
                 if obj_info:
                     prompt_json = remap_offline_widget_keys(prompt_json, obj_info)
 
+            ref_img = str(body.get("reference_image") or "").strip() or None
+            if ref_img:
+                ref_img = Path(ref_img).name
             pids = await self.bridge.run_custom_prompt(
                 prompt_json,
                 body.get("workflow_json"),
                 randomize_seed=bool(body.get("randomize_seed", True)),
                 batch_count=int(body.get("batch_count", 1)),
+                reference_image=ref_img,
             )
             return web.json_response({"ok": True, "prompt_ids": pids})
         except Exception as e:
@@ -993,7 +997,8 @@ class VaultApp:
         )
 
         body: Dict[str, Any] = {}
-        temp_image_path: Optional[Path] = None
+        saved_ref_image_path: Optional[Path] = None
+        saved_ref_image_name: Optional[str] = None
 
         if (request.content_type or "").lower().startswith("multipart/"):
             reader = await request.multipart()
@@ -1009,10 +1014,11 @@ class VaultApp:
                         ext = Path(orig_name).suffix.lower()
                         if ext not in (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"):
                             ext = ".png"
-                        tmp_dir = DATA_DIR / "tmp_prompt_images"
-                        tmp_dir.mkdir(parents=True, exist_ok=True)
-                        temp_image_path = tmp_dir / f"ref_{uuid.uuid4().hex}{ext}"
-                        temp_image_path.write_bytes(data)
+                        ref_dir = DATA_DIR / "ref_images"
+                        ref_dir.mkdir(parents=True, exist_ok=True)
+                        saved_ref_image_name = f"ref_{uuid.uuid4().hex[:12]}{ext}"
+                        saved_ref_image_path = ref_dir / saved_ref_image_name
+                        saved_ref_image_path.write_bytes(data)
                 else:
                     body[name] = await part.text()
         else:
@@ -1028,93 +1034,88 @@ class VaultApp:
         raw_show = body.get("show_window", False)
         show_window = raw_show if isinstance(raw_show, bool) else str(raw_show).strip().lower() in ("1", "true", "yes")
 
-        if not source_text and not temp_image_path:
+        if not source_text and not saved_ref_image_path:
             return web.json_response({"error": "请输入原始提示词/一句话想法，或上传一张参考图进行反推"}, status=400)
 
-        try:
-            has_divider = False
-            fixed_prefix = ""
-            detected_family = model_family_override
-            chosen_node = None
+        has_divider = False
+        fixed_prefix = ""
+        detected_family = model_family_override
+        chosen_node = None
 
-            if workflow_path:
-                try:
-                    info = await self._inspect_workflow_prompt_info(workflow_path)
-                    if not detected_family:
-                        detected_family = info.get("model_family") or ""
-                    nodes = info.get("prompt_nodes") or []
-                    if target_node_id:
-                        chosen_node = next(
-                            (
-                                n
-                                for n in nodes
-                                if n["node_id"] == target_node_id and (not target_input_key or n["input_key"] == target_input_key)
-                            ),
-                            None,
-                        )
-                    if chosen_node is None:
-                        chosen_node = info.get("primary_node")
-                    if chosen_node:
-                        has_divider = bool(chosen_node.get("has_divider"))
-                        fixed_prefix = str(chosen_node.get("fixed_prefix") or "")
-                        target_node_id = chosen_node["node_id"]
-                        target_input_key = chosen_node["input_key"]
-                except Exception as e:
-                    return web.json_response({"error": f"读取工作流失败: {e}"}, status=400)
-
-            instruction = build_conversion_instruction(
-                source_text=source_text,
-                model_family=detected_family,
-                has_divider=has_divider,
-                lang_pref=lang_pref,
-                has_image=bool(temp_image_path),
-                concise=(provider == "local_qwenvl"),
-            )
-
+        if workflow_path:
             try:
-                if provider == "local_qwenvl":
-                    converted_part = await asyncio.to_thread(
-                        convert_via_local_qwenvl_sync,
-                        instruction,
-                        str(temp_image_path) if temp_image_path else None,
+                info = await self._inspect_workflow_prompt_info(workflow_path)
+                if not detected_family:
+                    detected_family = info.get("model_family") or ""
+                nodes = info.get("prompt_nodes") or []
+                if target_node_id:
+                    chosen_node = next(
+                        (
+                            n
+                            for n in nodes
+                            if n["node_id"] == target_node_id and (not target_input_key or n["input_key"] == target_input_key)
+                        ),
+                        None,
                     )
-                else:
-                    converted_part = await asyncio.to_thread(
-                        convert_via_web_llm_sync,
-                        provider,
-                        instruction,
-                        show_window,
-                        str(temp_image_path) if temp_image_path else None,
-                    )
-                if not converted_part:
-                    return web.json_response({"error": "未返回有效内容，请重试或检查模型状态"}, status=500)
-                if has_divider and fixed_prefix:
-                    final_prompt = fixed_prefix.rstrip() + "\n\n" + converted_part.strip()
-                else:
-                    final_prompt = converted_part.strip()
-
-                return web.json_response(
-                    {
-                        "ok": True,
-                        "provider": provider,
-                        "model_family": detected_family,
-                        "has_divider": has_divider,
-                        "fixed_prefix": fixed_prefix,
-                        "converted_part": converted_part.strip(),
-                        "final_prompt": final_prompt,
-                        "workflow_path": workflow_path,
-                        "target_node_id": target_node_id,
-                        "target_input_key": target_input_key,
-                    }
-                )
+                if chosen_node is None:
+                    chosen_node = info.get("primary_node")
+                if chosen_node:
+                    has_divider = bool(chosen_node.get("has_divider"))
+                    fixed_prefix = str(chosen_node.get("fixed_prefix") or "")
+                    target_node_id = chosen_node["node_id"]
+                    target_input_key = chosen_node["input_key"]
             except Exception as e:
-                return web.json_response({"error": str(e)}, status=400)
-        finally:
-            if temp_image_path and temp_image_path.exists():
-                try:
-                    temp_image_path.unlink()
-                except Exception:
-                    pass
+                return web.json_response({"error": f"读取工作流失败: {e}"}, status=400)
+
+        instruction = build_conversion_instruction(
+            source_text=source_text,
+            model_family=detected_family,
+            has_divider=has_divider,
+            lang_pref=lang_pref,
+            has_image=bool(saved_ref_image_path),
+            concise=(provider == "local_qwenvl"),
+        )
+
+        try:
+            if provider == "local_qwenvl":
+                converted_part = await asyncio.to_thread(
+                    convert_via_local_qwenvl_sync,
+                    instruction,
+                    str(saved_ref_image_path) if saved_ref_image_path else None,
+                )
+            else:
+                converted_part = await asyncio.to_thread(
+                    convert_via_web_llm_sync,
+                    provider,
+                    instruction,
+                    show_window,
+                    str(saved_ref_image_path) if saved_ref_image_path else None,
+                )
+            if not converted_part:
+                return web.json_response({"error": "未返回有效内容，请重试或检查模型状态"}, status=500)
+            if has_divider and fixed_prefix:
+                final_prompt = fixed_prefix.rstrip() + "\n\n" + converted_part.strip()
+            else:
+                final_prompt = converted_part.strip()
+
+            return web.json_response(
+                {
+                    "ok": True,
+                    "provider": provider,
+                    "model_family": detected_family,
+                    "has_divider": has_divider,
+                    "fixed_prefix": fixed_prefix,
+                    "converted_part": converted_part.strip(),
+                    "final_prompt": final_prompt,
+                    "workflow_path": workflow_path,
+                    "target_node_id": target_node_id,
+                    "target_input_key": target_input_key,
+                    "reference_image": saved_ref_image_name,
+                    "reference_image_url": f"/api/ref-images/{saved_ref_image_name}" if saved_ref_image_name else None,
+                }
+            )
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=400)
 
     async def handle_lora_matrix(self, request: web.Request) -> web.Response:
         data = await asyncio.to_thread(self.db.get_lora_matrix)
@@ -1154,6 +1155,17 @@ class VaultApp:
         sid = int(request.match_info["id"])
         await asyncio.to_thread(self.db.delete_snippet, sid)
         return web.json_response({"ok": True})
+
+    async def handle_ref_image(self, request: web.Request) -> web.StreamResponse:
+        from .config import DATA_DIR
+
+        name = Path(request.match_info["name"]).name
+        p = DATA_DIR / "ref_images" / name
+        if not p.exists() or not p.is_file():
+            raise web.HTTPNotFound()
+        resp = web.FileResponse(p)
+        resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return resp
 
     async def handle_thumb(self, request: web.Request) -> web.StreamResponse:
         name = Path(request.match_info["name"]).name
@@ -1472,6 +1484,7 @@ class VaultApp:
         app.router.add_post("/api/prompt-converter/inspect-workflow", self.handle_prompt_converter_inspect_workflow)
         app.router.add_post("/api/prompt-converter/convert", self.handle_prompt_converter_convert)
         app.router.add_get("/api/thumbs/{name}", self.handle_thumb)
+        app.router.add_get("/api/ref-images/{name}", self.handle_ref_image)
         app.router.add_get("/api/thumb-by-id/{id:\\d+}", self.handle_thumb_by_id)
         app.router.add_get("/api/media/{id:\\d+}", self.handle_media)
         app.router.add_get("/ws", self.handle_ws)
