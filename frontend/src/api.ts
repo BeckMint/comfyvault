@@ -269,6 +269,8 @@ export const api = {
     target_node_id?: string;
     target_input_key?: string;
     model_family?: string;
+    media_type?: "image" | "video";
+    has_divider?: boolean;
     lang_pref?: "auto" | "en" | "zh";
     show_window?: boolean;
     image?: File | null;
@@ -295,6 +297,8 @@ export const api = {
       if (payload.target_node_id) fd.append("target_node_id", payload.target_node_id);
       if (payload.target_input_key) fd.append("target_input_key", payload.target_input_key);
       if (payload.model_family) fd.append("model_family", payload.model_family);
+      if (payload.media_type) fd.append("media_type", payload.media_type);
+      if (payload.has_divider !== undefined) fd.append("has_divider", payload.has_divider ? "true" : "false");
       if (payload.lang_pref) fd.append("lang_pref", payload.lang_pref);
       fd.append("show_window", payload.show_window ? "true" : "false");
       fd.append("image", payload.image);

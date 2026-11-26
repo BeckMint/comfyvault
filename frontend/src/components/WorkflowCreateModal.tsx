@@ -11,12 +11,14 @@ import {
   Search,
   Settings,
   Shuffle,
+  Wand2,
   Workflow,
   X,
 } from "lucide-react";
 import { api, formatTime } from "../api";
 import { useI18n } from "../i18n";
 import type { ComfyStatus, SnippetItem, WorkflowFileItem } from "../types";
+import { InlinePromptWriterModal } from "./InlinePromptWriterModal";
 import { PowerLoraEditor } from "./PowerLoraEditor";
 import type { WorkflowPrefillPayload } from "./PromptConverterModal";
 
@@ -198,6 +200,12 @@ export const WorkflowCreateModal: React.FC<Props> = ({
   const [focusedField, setFocusedField] = useState<{ nid: string; key: string } | null>(null);
   const [uploadedPreviews, setUploadedPreviews] = useState<Record<string, string>>({});
   const [linkedRefImage, setLinkedRefImage] = useState<string | null>(initialPrefill?.referenceImageName || null);
+  const [aiWriterTarget, setAiWriterTarget] = useState<{
+    nid: string;
+    key: string;
+    label: string;
+    currentText: string;
+  } | null>(null);
   const [pinnedPaths, setPinnedPaths] = useState<Set<string>>(() => {
     try {
       const raw = localStorage.getItem("comfyvault_pinned_workflows");
@@ -280,9 +288,8 @@ export const WorkflowCreateModal: React.FC<Props> = ({
 
   const selectFile = async (filePath: string, prefill?: WorkflowPrefillPayload | null) => {
     setSelectedPath(filePath);
-    if (prefill?.referenceImageName) {
-      setLinkedRefImage(prefill.referenceImageName);
-    }
+    // Always reset linked reference image when switching workflows unless explicitly prefilled
+    setLinkedRefImage(prefill?.referenceImageName || null);
     setLoadingWf(true);
     try {
       const res = await api.loadWorkflowFile(filePath);
@@ -940,7 +947,28 @@ export const WorkflowCreateModal: React.FC<Props> = ({
                           if (isMultiline) {
                             return (
                               <div key={key} className="md:col-span-2 space-y-1">
-                                <span className="text-[11px] text-zinc-400 font-mono">{key}</span>
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-[11px] text-zinc-400 font-mono">{key}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setAiWriterTarget({
+                                        nid: node.nid,
+                                        key,
+                                        label: `#${node.nid} ${node.title} · ${key}`,
+                                        currentText: strVal,
+                                      })
+                                    }
+                                    title={t(
+                                      "调用大模型为当前底模写提示词",
+                                      "Use AI LLM to write a prompt tailored to this workflow"
+                                    )}
+                                    className="h-6 px-2 rounded-md bg-indigo-500/15 hover:bg-indigo-500/30 border border-indigo-400/35 text-indigo-200 text-[11px] font-medium flex items-center gap-1 transition-colors"
+                                  >
+                                    <Wand2 className="w-3 h-3" />
+                                    {t("AI 写提示词", "AI Write")}
+                                  </button>
+                                </div>
                                 <textarea
                                   value={strVal}
                                   onFocus={() => setFocusedField({ nid: node.nid, key })}
@@ -1003,6 +1031,19 @@ export const WorkflowCreateModal: React.FC<Props> = ({
                 </button>
               ))}
             </div>
+            {linkedRefImage && (
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-amber-500/15 border border-amber-500/35 text-amber-200 text-[11px]">
+                {t("已关联对比原图", "Linked Ref Image")}
+                <button
+                  type="button"
+                  onClick={() => setLinkedRefImage(null)}
+                  title={t("解除本次生成的参考图关联", "Unlink reference image for this generation")}
+                  className="hover:text-white"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
@@ -1041,6 +1082,18 @@ export const WorkflowCreateModal: React.FC<Props> = ({
           </div>
         </div>
       </div>
+
+      {aiWriterTarget && (
+        <InlinePromptWriterModal
+          promptJson={promptJson}
+          workflowName={activeName}
+          currentText={aiWriterTarget.currentText}
+          nodeLabel={aiWriterTarget.label}
+          onClose={() => setAiWriterTarget(null)}
+          onInsertText={(text) => updateInput(aiWriterTarget.nid, aiWriterTarget.key, text)}
+          onToast={(msg, tone) => (tone === "err" ? onError(msg) : onSubmitted(msg))}
+        />
+      )}
     </div>
   );
 };

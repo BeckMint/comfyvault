@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { BookMarked, ImagePlus, Pin, Play, Save, Search, Shuffle, SlidersHorizontal, Workflow, X } from "lucide-react";
+import { BookMarked, ImagePlus, Pin, Play, Save, Search, Shuffle, SlidersHorizontal, Wand2, Workflow, X } from "lucide-react";
 import { api } from "../api";
 import { useI18n } from "../i18n";
 import type { AssetDetail, ComfyStatus, PromptNodeEntry, SnippetItem } from "../types";
+import { InlinePromptWriterModal } from "./InlinePromptWriterModal";
 import { PowerLoraEditor } from "./PowerLoraEditor";
 
 interface Props {
@@ -93,6 +94,12 @@ export const RemixModal: React.FC<Props> = ({ detail, comfyStatus, onClose, onSa
   );
 
   const [promptJson, setPromptJson] = useState<Record<string, ComfyNodeData> | null>(null);
+  const [aiWriterTarget, setAiWriterTarget] = useState<{
+    nid: string;
+    key: string;
+    label: string;
+    currentText: string;
+  } | null>(null);
   const [uiTitles, setUiTitles] = useState<Record<string, string>>({});
   const [fieldOptions, setFieldOptions] = useState<Record<string, Record<string, any[]>>>({});
   const [loadingCtx, setLoadingCtx] = useState(true);
@@ -368,6 +375,25 @@ export const RemixModal: React.FC<Props> = ({ detail, comfyStatus, onClose, onSa
                       )}
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setAiWriterTarget({
+                            nid: p.node_id,
+                            key: p.input_key,
+                            label: `#${p.node_id} ${p.node_title} · ${p.input_key}`,
+                            currentText: curText,
+                          })
+                        }
+                        title={t(
+                          "调用大模型为当前底模写提示词",
+                          "Use AI LLM to write a prompt tailored to this workflow"
+                        )}
+                        className="h-6 px-2 rounded-md bg-indigo-500/15 hover:bg-indigo-500/30 border border-indigo-400/35 text-indigo-200 text-[11px] font-medium flex items-center gap-1 transition-colors"
+                      >
+                        <Wand2 className="w-3 h-3" />
+                        {t("AI 写提示词", "AI Write")}
+                      </button>
                       <span className="font-mono text-[11px] text-zinc-500">{p.input_key}</span>
                       <button
                         type="button"
@@ -740,6 +766,19 @@ export const RemixModal: React.FC<Props> = ({ detail, comfyStatus, onClose, onSa
           </div>
         </div>
       </div>
+
+      {aiWriterTarget && (
+        <InlinePromptWriterModal
+          promptJson={promptJson}
+          workflowName={detail.workflow_name || undefined}
+          baseModel={detail.base_model}
+          currentText={aiWriterTarget.currentText}
+          nodeLabel={aiWriterTarget.label}
+          onClose={() => setAiWriterTarget(null)}
+          onInsertText={(text) => updateInput(aiWriterTarget.nid, aiWriterTarget.key, text)}
+          onToast={(msg, tone) => (tone === "err" ? onError(msg) : onSubmitted(msg))}
+        />
+      )}
     </div>
   );
 };

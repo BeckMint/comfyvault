@@ -124,10 +124,25 @@ def build_conversion_instruction(
     has_image: bool = False,
     concise: bool = False,
     run_tag: Optional[str] = None,
+    media_type: str = "",
 ) -> str:
     guide = choose_model_guide(model_family)
     out_lang = choose_output_language(model_family, lang_pref)
     src = (source_text or "").strip()
+    mt = (media_type or "").strip().lower()
+    media_directive = ""
+    if mt == "video":
+        media_directive = (
+            "TARGET MEDIUM: AI VIDEO GENERATION. Describe continuous temporal motion, explicit camera movement "
+            "(e.g., slow push-in, handheld tracking, smooth pan, static locked-off shot), chronological subject actions, "
+            "subtle hair/fabric/ambient dynamics, and lighting/atmosphere progression over time."
+        )
+    elif mt == "image":
+        media_directive = (
+            "TARGET MEDIUM: STILL IMAGE GENERATION. Describe a single frozen photographic/cinematic frame with exact "
+            "framing, camera angle, lens perspective, pose, expression, lighting, texture, and atmosphere — do NOT write "
+            "video camera movements or multi-step temporal transitions."
+        )
     start_marker = f"<<<PROMPT_START_{run_tag}>>>" if run_tag else "<<<PROMPT_START>>>"
     end_marker = f"<<<PROMPT_END_{run_tag}>>>" if run_tag else "<<<PROMPT_END>>>"
 
@@ -226,7 +241,8 @@ def build_conversion_instruction(
         "You must ONLY write a plain-text prompt.\n"
         "You are an expert AI image/video prompt writer.\n"
         f"{guide}\n"
-        f"Output language: {out_lang}.\n\n"
+        + (f"{media_directive}\n" if media_directive else "")
+        + f"Output language: {out_lang}.\n\n"
         f"{constraint_block}\n\n"
         "OUTPUT FORMAT RULES:\n"
         "- Treat this request independently from any earlier messages or images in this conversation.\n"

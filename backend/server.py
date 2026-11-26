@@ -1031,13 +1031,19 @@ class VaultApp:
         target_input_key = str(body.get("target_input_key") or "").strip()
         model_family_override = str(body.get("model_family") or "").strip()
         lang_pref = str(body.get("lang_pref") or "auto").strip().lower()
+        media_type = str(body.get("media_type") or "").strip().lower()
+        raw_has_divider = body.get("has_divider", None)
         raw_show = body.get("show_window", False)
         show_window = raw_show if isinstance(raw_show, bool) else str(raw_show).strip().lower() in ("1", "true", "yes")
 
         if not source_text and not saved_ref_image_path:
             return web.json_response({"error": "请输入原始提示词/一句话想法，或上传一张参考图进行反推"}, status=400)
 
-        has_divider = False
+        has_divider = (
+            raw_has_divider
+            if isinstance(raw_has_divider, bool)
+            else str(raw_has_divider or "").strip().lower() in ("1", "true", "yes")
+        )
         fixed_prefix = ""
         detected_family = model_family_override
         chosen_node = None
@@ -1076,6 +1082,7 @@ class VaultApp:
             has_image=bool(saved_ref_image_path),
             concise=(provider == "local_qwenvl"),
             run_tag=run_tag if provider != "local_qwenvl" else None,
+            media_type=media_type,
         )
 
         try:
