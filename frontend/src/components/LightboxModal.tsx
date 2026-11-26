@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ChevronLeft,
   ChevronRight,
+  Columns2,
   FlipHorizontal2,
   FlipVertical2,
   Maximize2,
@@ -31,6 +32,7 @@ interface Props {
   onChangeIndex: (idx: number) => void;
   onClose: () => void;
   onAssetTransformed?: (info: TransformedAssetInfo) => void;
+  onOpenRefCompare?: (item: AssetListItem) => void;
 }
 
 interface ViewState {
@@ -197,7 +199,7 @@ function initWebGL2(canvas: HTMLCanvasElement): GLRenderer | null {
   };
 }
 
-export const LightboxModal: React.FC<Props> = ({ items, currentIndex, onChangeIndex, onClose, onAssetTransformed }) => {
+export const LightboxModal: React.FC<Props> = ({ items, currentIndex, onChangeIndex, onClose, onAssetTransformed, onOpenRefCompare }) => {
   const { t } = useI18n();
   const item = items[currentIndex];
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -813,6 +815,17 @@ export const LightboxModal: React.FC<Props> = ({ items, currentIndex, onChangeIn
         </div>
 
         <div className="pointer-events-auto flex items-center gap-1.5">
+          {item.reference_image_url && onOpenRefCompare && (
+            <button
+              type="button"
+              onClick={() => onOpenRefCompare(item)}
+              className="px-2.5 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/35 border border-amber-400/50 text-amber-200 text-xs font-semibold flex items-center gap-1.5"
+              title={t("分屏对比反推原图与当前生成图", "Split compare reference image vs generated output")}
+            >
+              <Columns2 className="w-4 h-4 text-amber-300" />
+              {t("分屏对比原图", "Compare Ref")}
+            </button>
+          )}
           {item.media_type === "image" && (
             <>
               {/* Rotate & Flip Controls */}

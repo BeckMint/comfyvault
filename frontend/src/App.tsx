@@ -8,6 +8,7 @@ import { FolderSummaryPanel } from "./components/FolderSummaryPanel";
 import { LightboxModal } from "./components/LightboxModal";
 import { LiveProgressBar } from "./components/LiveProgressBar";
 import { LoraMatrixView } from "./components/LoraMatrixView";
+import { RefCompareModal } from "./components/RefCompareModal";
 import { RemixModal } from "./components/RemixModal";
 import { SettingsModal } from "./components/SettingsModal";
 import { Sidebar } from "./components/Sidebar";
@@ -64,6 +65,7 @@ export default function App() {
   const [checkedIds, setCheckedIds] = useState<Set<number>>(new Set());
   const [remixDetail, setRemixDetail] = useState<AssetDetail | null>(null);
   const [compareIds, setCompareIds] = useState<[number, number] | null>(null);
+  const [refCompareItem, setRefCompareItem] = useState<AssetListItem | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [showWorkflowCreate, setShowWorkflowCreate] = useState(false);
   const [showPromptConverter, setShowPromptConverter] = useState(false);
@@ -582,6 +584,7 @@ export default function App() {
               onQuickRate={handleQuickRate}
               onQuickFlag={handleQuickFlag}
               onQuickHide={handleQuickHide}
+              onOpenRefCompare={(a) => setRefCompareItem(a)}
               onFilterRecipe={(hash) => handleFilterChange({ recipeHash: hash, collapseRecipes: false })}
               onLoadMore={() => loadAssets(false)}
             />
@@ -703,6 +706,21 @@ export default function App() {
 
       {compareIds && <CompareModal assetIds={compareIds} onClose={() => setCompareIds(null)} />}
 
+      {refCompareItem && refCompareItem.reference_image_url && (
+        <RefCompareModal
+          detail={refCompareItem}
+          onClose={() => setRefCompareItem(null)}
+          onOpenRemix={() => {
+            const targetId = refCompareItem.id;
+            setRefCompareItem(null);
+            api
+              .getAssetDetail(targetId)
+              .then((d) => setRemixDetail(d))
+              .catch(() => {});
+          }}
+        />
+      )}
+
       {lightboxIndex !== null && items[lightboxIndex] && (
         <LightboxModal
           items={items}
@@ -710,6 +728,10 @@ export default function App() {
           onChangeIndex={(idx) => {
             setLightboxIndex(idx);
             if (items[idx]) setSelectedId(items[idx].id);
+          }}
+          onOpenRefCompare={(a) => {
+            setLightboxIndex(null);
+            setRefCompareItem(a);
           }}
           onAssetTransformed={(info) => {
             setItems((prev) =>

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, Eye, EyeOff, Film, Layers, Star, ThumbsDown, ThumbsUp } from "lucide-react";
+import { Check, Columns2, Eye, EyeOff, Film, Layers, Star, ThumbsDown, ThumbsUp } from "lucide-react";
 import { useI18n } from "../i18n";
 import type { AssetListItem } from "../types";
 
@@ -17,6 +17,7 @@ interface Props {
   onQuickRate: (id: number, rating: number) => void;
   onQuickFlag: (id: number, flag: "" | "pick" | "reject") => void;
   onQuickHide: (item: AssetListItem) => void;
+  onOpenRefCompare?: (item: AssetListItem) => void;
   onFilterRecipe: (recipeHash: string) => void;
   onLoadMore: () => void;
 }
@@ -45,6 +46,7 @@ const AssetCard = React.memo(function AssetCard({
   onQuickRate,
   onQuickFlag,
   onQuickHide,
+  onOpenRefCompare,
   onFilterRecipe,
 }: {
   placed: PlacedItem;
@@ -57,6 +59,7 @@ const AssetCard = React.memo(function AssetCard({
   onQuickRate: (id: number, r: number) => void;
   onQuickFlag: (id: number, f: "" | "pick" | "reject") => void;
   onQuickHide: (a: AssetListItem) => void;
+  onOpenRefCompare?: (a: AssetListItem) => void;
   onFilterRecipe: (hash: string) => void;
 }) {
   const { t } = useI18n();
@@ -158,6 +161,20 @@ const AssetCard = React.memo(function AssetCard({
               className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-indigo-600/85 hover:bg-indigo-500 backdrop-blur-sm text-[11px] font-semibold text-white shadow"
             >
               <Layers className="w-3 h-3" />×{item.recipe_count}
+            </button>
+          )}
+          {item.reference_image_url && onOpenRefCompare && (
+            <button
+              type="button"
+              title={t("分屏对比反推原图与生成图", "Split compare reference image vs generated output")}
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenRefCompare(item);
+              }}
+              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-500/90 hover:bg-amber-400 backdrop-blur-sm text-[10px] font-semibold text-black shadow"
+            >
+              <Columns2 className="w-3 h-3" />
+              {t("对比原图", "Ref")}
             </button>
           )}
           {item.flag === "pick" && (
@@ -308,6 +325,7 @@ export const VirtualMasonry: React.FC<Props> = ({
   onQuickRate,
   onQuickFlag,
   onQuickHide,
+  onOpenRefCompare,
   onFilterRecipe,
   onLoadMore,
 }) => {
@@ -531,6 +549,7 @@ export const VirtualMasonry: React.FC<Props> = ({
               onQuickRate={onQuickRate}
               onQuickFlag={onQuickFlag}
               onQuickHide={onQuickHide}
+              onOpenRefCompare={onOpenRefCompare}
               onFilterRecipe={onFilterRecipe}
             />
           ))}

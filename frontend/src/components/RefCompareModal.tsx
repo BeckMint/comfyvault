@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from "react";
 import { Columns2, SlidersHorizontal, Wand2, X, ZoomIn, ZoomOut } from "lucide-react";
 import { useI18n } from "../i18n";
-import type { AssetDetail } from "../types";
+import type { AssetDetail, AssetListItem } from "../types";
 
 interface Props {
-  detail: AssetDetail;
+  detail: AssetDetail | AssetListItem;
   onClose: () => void;
   onOpenRemix?: () => void;
 }
@@ -86,7 +86,7 @@ export const RefCompareModal: React.FC<Props> = ({ detail, onClose, onOpenRemix 
               </button>
             )}
 
-            {onOpenRemix && detail.has_raw_prompt && (
+            {onOpenRemix && ("has_raw_prompt" in detail ? detail.has_raw_prompt : true) && (
               <button
                 type="button"
                 onClick={() => {
