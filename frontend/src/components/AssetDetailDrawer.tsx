@@ -743,7 +743,7 @@ export const AssetDetailDrawer: React.FC<Props> = ({
       {lightbox && (
         <div
           onClick={() => setLightbox(false)}
-          className="fixed inset-0 z-[70] bg-black/90 backdrop-blur-sm flex items-center justify-center p-6 cursor-zoom-out"
+          className="fixed inset-0 z-[70] bg-black/85 flex items-center justify-center p-6 cursor-zoom-out"
         >
           <button
             type="button"
