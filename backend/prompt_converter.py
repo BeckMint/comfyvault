@@ -134,9 +134,9 @@ def build_conversion_instruction(
             "STRICT EXCLUSIONS — YOU MUST COMPLETELY OMIT:\n"
             "1. Facial shape, facial features & identity (face shape, eyes, nose, lips, jawline, skin tone, ethnicity, age, beauty adjectives).\n"
             "2. Body type & body proportions (bust/chest size, waist, hips, height, build, slim/curvy/voluptuous descriptions).\n"
+            "3. Aspect ratio, canvas orientation, framing ratio, or resolution (e.g., 9:16, 4:5, 2:3, 16:9, 'vertical portrait framing', 'horizontal widescreen', 'square format', '4K') — the workflow's resolution node already controls the canvas aspect ratio.\n"
             "MUST FAITHFULLY PRESERVE & RICHLY DEVELOP:\n"
-            "- Framing orientation & aspect ratio feel (e.g., vertical portrait framing, horizontal wide framing, square composition)\n"
-            "- Exact composition, shot scale, camera height/pitch/azimuth angle relative to the subject, and lens focal length/perspective\n"
+            "- Exact composition, shot scale, crop boundaries, camera height/pitch/azimuth angle relative to the subject, and lens focal length/perspective\n"
             "- Background environment, architectural/natural setting, props & spatial layering\n"
             "- Storytelling narrative, emotional tension & cinematic atmosphere\n"
             "- Subject action, body pose, limb placement, torso/head angle, hand gestures & physical interaction\n"
@@ -151,9 +151,10 @@ def build_conversion_instruction(
             constraint_block = (
                 "MODE: Full-Prompt Image Reverse-Engineering (Preserve Scene, Composition, Photography & Style; LoRA-Friendly Neutral Identity).\n"
                 "Carefully analyze the attached reference image and reverse-engineer a complete, production-ready, paragraph-structured prompt tailored to the target model.\n"
-                "Accurately capture: framing orientation & aspect ratio feel, exact composition & camera angle relative to the subject, lens focal length & perspective, "
+                "Accurately capture: exact composition & camera angle relative to the subject, lens focal length & perspective, "
                 "background environment & props, storytelling mood, subject pose/action/angle/expression/gaze, hairstyle & wardrobe/fabric details, "
                 "lighting direction & shadow contrast, photography style, color grading & post-processing treatment. "
+                "OMIT aspect ratio / canvas orientation / resolution (e.g. 9:16, 4:5, vertical portrait framing, horizontal widescreen, 4K) because the workflow node controls the canvas ratio. "
                 "Keep facial bone structure and body proportions neutral so any applied character LoRA naturally retains its own face and figure."
             )
         else:
@@ -167,7 +168,7 @@ def build_conversion_instruction(
         camera_lock_block = (
             "UNIFIED IMAGE REVERSE-PROMPTING FIDELITY RULES (APPLIES TO ALL ENGINES — HIGHEST PRIORITY, STATE IN OPENING PARAGRAPH):\n"
             "Do NOT default to generic 'eye-level 50mm' descriptions. Faithfully reverse-engineer every photographic and compositional element from the reference image:\n"
-            "1. Framing Orientation, Aspect Ratio Feel & Crop Boundaries: explicitly state the framing proportion (e.g., vertical portrait framing, 4:5/2:3/9:16 vertical feel, horizontal widescreen/3:2 feel, square), exact shot scale (close-up, chest-up, waist-up, mid-thigh, knee-up, full-body with feet visible/cropped), and headroom/negative space.\n"
+            "1. Shot Scale & Crop Boundaries (NO aspect ratio/orientation words): state precisely where the frame crops the subject (e.g., close-up, chest-up, waist-up, mid-thigh, knee-up, full-body with feet visible/cropped) and headroom/negative space — NEVER mention aspect ratio, vertical/horizontal framing, or resolution (handled by workflow node).\n"
             "2. Camera Elevation & Vertical Pitch Relative to Subject: specify exact camera height and tilt (ground-level worm's-eye looking sharply up, low-angle from knee/waist level looking up, strict eye-level, slightly elevated high-angle looking down, steep overhead/top-down bird's-eye).\n"
             "3. Horizontal Viewing Angle & Subject Orientation: explicitly separate (a) camera azimuth relative to the subject (dead-on frontal, 3/4 front-left or front-right, strict side profile, over-the-shoulder, 3/4 rear view looking back, full back view), (b) torso orientation, (c) head turn angle, and (d) exact eye-gaze direction & facial expression.\n"
             "4. Subject Placement, Scale & Horizon: state where the subject sits in the frame (centered, left/right third, lower-left/upper-right, diagonal axis), approximate frame occupancy, horizon line height (low/mid/high), and any Dutch tilt / camera roll.\n"
