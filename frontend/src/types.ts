@@ -11,6 +11,13 @@ export interface LoraShort {
   enabled: boolean;
 }
 
+export interface ReferenceImageEntry {
+  url: string;
+  label: string;
+  source?: string;
+  filename?: string;
+}
+
 export interface AssetListItem {
   id: number;
   rel_path: string;
@@ -45,6 +52,7 @@ export interface AssetListItem {
   is_hidden?: number;
   reference_image?: string | null;
   reference_image_url?: string | null;
+  reference_images?: ReferenceImageEntry[];
   tags: TagItem[];
 }
 

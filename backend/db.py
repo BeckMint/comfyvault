@@ -4,9 +4,100 @@ import threading
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import quote
 
-from .config import DB_PATH, ensure_dirs
+from .config import COMFY_ROOT, DB_PATH, ensure_dirs
 from .parser import classify_model_family
+
+
+def _node_id_sort_key(nid: str) -> Tuple[Any, ...]:
+    parts = []
+    for seg in str(nid).split(":"):
+        try:
+            parts.append((0, int(seg)))
+        except ValueError:
+            parts.append((1, seg))
+    return tuple(parts)
+
+
+def _extract_reference_images(
+    reference_image: Optional[str],
+    raw_prompt_json: Optional[str],
+) -> List[Dict[str, str]]:
+    """Collect all reference images for an asset in deterministic order:
+    1) Reverse-prompting reference image stored in data/ref_images/
+    2) Workflow LoadImage input images found in raw_prompt_json (sorted by node ID)
+    """
+    refs: List[Dict[str, str]] = []
+    seen_urls: set = set()
+
+    if reference_image:
+        url = f"/api/ref-images/{reference_image}"
+        seen_urls.add(url)
+        refs.append(
+            {
+                "url": url,
+                "label": "反推参考原图",
+                "source": "reverse_prompt",
+                "filename": str(reference_image),
+            }
+        )
+
+    if raw_prompt_json and ("LoadImage" in raw_prompt_json or "load_image" in raw_prompt_json or "Load Image" in raw_prompt_json):
+        try:
+            prompt = json.loads(raw_prompt_json)
+        except Exception:
+            prompt = None
+        if isinstance(prompt, dict):
+            input_root = COMFY_ROOT / "input"
+            found: List[Tuple[str, str, str]] = []
+            for nid, node in prompt.items():
+                if not isinstance(node, dict):
+                    continue
+                ct = str(node.get("class_type") or "")
+                ctl = ct.lower().replace(" ", "")
+                if "loadimage" not in ctl and "load_image" not in ctl:
+                    continue
+                if "output" in ctl and "loadimageoutput" in ctl:
+                    continue
+                inputs = node.get("inputs")
+                if not isinstance(inputs, dict):
+                    continue
+                raw_img = inputs.get("image") or inputs.get("image_path")
+                if not isinstance(raw_img, str):
+                    continue
+                img_name = raw_img.strip()
+                if not img_name:
+                    continue
+                # Strip ComfyUI UI annotations like "foo.png [input]"
+                if img_name.endswith(" [input]"):
+                    img_name = img_name[:-8].strip()
+                norm_name = img_name.replace("\\", "/").lstrip("/")
+                if not norm_name or ".." in norm_name.split("/"):
+                    continue
+                # Only include if the input image file still exists on disk
+                if not (input_root / norm_name).is_file():
+                    continue
+                title = str((node.get("_meta") or {}).get("title") or "").strip()
+                label = title or f"参考图 #{nid}"
+                found.append((str(nid), norm_name, label))
+
+            found.sort(key=lambda x: _node_id_sort_key(x[0]))
+            for _nid, norm_name, label in found:
+                url = f"/api/comfy/input-image?name={quote(norm_name, safe='/')}"
+                if url in seen_urls:
+                    continue
+                seen_urls.add(url)
+                refs.append(
+                    {
+                        "url": url,
+                        "label": label,
+                        "source": "workflow_input",
+                        "filename": norm_name,
+                    }
+                )
+
+    return refs
 
 
 class VaultDB:
@@ -667,6 +758,7 @@ class VaultDB:
                        a.seed, a.steps, a.cfg, a.sampler, a.rating, a.flag, a.notes, a.parent_id,
                        COALESCE(a.is_hidden, 0) AS is_hidden,
                        a.reference_image,
+                       a.raw_prompt_json,
                        CASE WHEN a.recipe_hash IS NULL THEN 1
                             ELSE (SELECT COUNT(*) FROM assets b WHERE b.is_deleted = 0 AND b.recipe_hash = a.recipe_hash)
                        END AS recipe_count
@@ -707,6 +799,7 @@ class VaultDB:
                     ]
                 except Exception:
                     pass
+            ref_images = _extract_reference_images(r["reference_image"], r["raw_prompt_json"])
             items.append(
                 {
                     "id": r["id"],
@@ -741,7 +834,8 @@ class VaultDB:
                     "parent_id": r["parent_id"],
                     "is_hidden": int(r["is_hidden"] or 0),
                     "reference_image": r["reference_image"],
-                    "reference_image_url": f"/api/ref-images/{r['reference_image']}" if r["reference_image"] else None,
+                    "reference_image_url": ref_images[0]["url"] if ref_images else None,
+                    "reference_images": ref_images,
                     "tags": tags_map.get(r["id"], []),
                 }
             )
@@ -841,6 +935,8 @@ class VaultDB:
             except Exception:
                 return default
 
+        ref_images = _extract_reference_images(r["reference_image"], r["raw_prompt_json"])
+
         return {
             "id": r["id"],
             "rel_path": r["rel_path"],
@@ -857,7 +953,8 @@ class VaultDB:
             "thumb_url": f"/api/thumbs/{r['thumb_name']}" if r["thumb_name"] else f"/api/thumb-by-id/{r['id']}",
             "media_url": f"/api/media/{r['id']}",
             "reference_image": r["reference_image"],
-            "reference_image_url": f"/api/ref-images/{r['reference_image']}" if r["reference_image"] else None,
+            "reference_image_url": ref_images[0]["url"] if ref_images else None,
+            "reference_images": ref_images,
             "comfy_version": r["comfy_version"],
             "gen_duration_sec": r["gen_duration_sec"],
             "workflow_hash": r["workflow_hash"],

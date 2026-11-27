@@ -335,24 +335,44 @@ export const AssetDetailDrawer: React.FC<Props> = ({
             </button>
           </div>
 
-          {/* Reference Image Split-Compare Button (for reverse-prompted outputs) */}
-          {detail.reference_image_url && (
-            <button
-              type="button"
-              onClick={() => setShowRefCompare(true)}
-              className="w-full py-2 px-3 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-100 text-xs font-semibold flex items-center justify-between gap-2.5 transition-colors"
-            >
-              <span className="flex items-center gap-2">
-                <Columns2 className="w-4 h-4 text-amber-300 shrink-0" />
-                {t("分屏对比反推原图", "Split Compare with Reference Image")}
-              </span>
-              <img
-                src={detail.reference_image_url}
-                alt="ref"
-                className="w-7 h-7 rounded object-cover border border-amber-400/50 shrink-0"
-              />
-            </button>
-          )}
+          {/* Reference Image Compare Button (single-ref split or multi-ref N-grid) */}
+          {detail.reference_image_url && (() => {
+            const refs = detail.reference_images && detail.reference_images.length > 0
+              ? detail.reference_images
+              : [{ url: detail.reference_image_url, label: "" }];
+            const isMulti = refs.length > 1;
+            return (
+              <button
+                type="button"
+                onClick={() => setShowRefCompare(true)}
+                className="w-full py-2 px-3 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-100 text-xs font-semibold flex items-center justify-between gap-2.5 transition-colors"
+              >
+                <span className="flex items-center gap-2 truncate">
+                  <Columns2 className="w-4 h-4 text-amber-300 shrink-0" />
+                  <span className="truncate">
+                    {isMulti
+                      ? t(`N宫格对比原图（${refs.length} 张参考图）`, `Grid Compare (${refs.length} Ref Images)`)
+                      : t("分屏对比参考原图", "Split Compare with Reference Image")}
+                  </span>
+                </span>
+                <span className="flex items-center -space-x-1.5 shrink-0">
+                  {refs.slice(0, 3).map((r, i) => (
+                    <img
+                      key={`${r.url}-${i}`}
+                      src={r.url}
+                      alt={`ref-${i + 1}`}
+                      className="w-7 h-7 rounded object-cover border border-amber-400/60 bg-black"
+                    />
+                  ))}
+                  {refs.length > 3 && (
+                    <span className="w-7 h-7 rounded bg-amber-950/90 border border-amber-400/60 text-[10px] text-amber-200 font-bold flex items-center justify-center">
+                      +{refs.length - 3}
+                    </span>
+                  )}
+                </span>
+              </button>
+            );
+          })()}
 
           {/* Rating, Flags & Tags */}
           <div className="p-3 rounded-xl bg-[#151925] border border-zinc-800/80 space-y-3">

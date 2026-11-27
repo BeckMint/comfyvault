@@ -824,10 +824,12 @@ export const LightboxModal: React.FC<Props> = ({ items, currentIndex, onChangeIn
               type="button"
               onClick={() => onOpenRefCompare(item)}
               className="px-2.5 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/35 border border-amber-400/50 text-amber-200 text-xs font-semibold flex items-center gap-1.5"
-              title={t("分屏对比反推原图与当前生成图", "Split compare reference image vs generated output")}
+              title={t("对比参考原图与当前生成图", "Compare reference image(s) vs generated output")}
             >
               <Columns2 className="w-4 h-4 text-amber-300" />
-              {t("分屏对比原图", "Compare Ref")}
+              {(item.reference_images?.length || 1) > 1
+                ? t(`N宫格对比原图 (${item.reference_images?.length}张)`, `Grid Compare (${item.reference_images?.length})`)
+                : t("对比原图", "Compare Ref")}
             </button>
           )}
           {item.media_type === "image" && (

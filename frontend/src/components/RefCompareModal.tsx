@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from "react";
-import { Columns2, SlidersHorizontal, Wand2, X, ZoomIn, ZoomOut } from "lucide-react";
+import React, { useEffect, useMemo, useState } from "react";
+import { Columns2, LayoutGrid, SlidersHorizontal, Wand2, X, ZoomIn, ZoomOut } from "lucide-react";
 import { useI18n } from "../i18n";
-import type { AssetDetail, AssetListItem } from "../types";
+import type { AssetDetail, AssetListItem, ReferenceImageEntry } from "../types";
 
 interface Props {
   detail: AssetDetail | AssetListItem;
@@ -11,10 +11,36 @@ interface Props {
 
 export const RefCompareModal: React.FC<Props> = ({ detail, onClose, onOpenRemix }) => {
   const { t } = useI18n();
-  const [mode, setMode] = useState<"split" | "slider">("split");
+
+  const refList = useMemo<ReferenceImageEntry[]>(() => {
+    if (detail.reference_images && detail.reference_images.length > 0) {
+      return detail.reference_images;
+    }
+    if (detail.reference_image_url) {
+      return [
+        {
+          url: detail.reference_image_url,
+          label: t("反推参考原图", "Reference Image"),
+          source: "reverse_prompt",
+          filename: detail.reference_image || "",
+        },
+      ];
+    }
+    return [];
+  }, [detail.reference_images, detail.reference_image_url, detail.reference_image, t]);
+
+  const isMulti = refList.length > 1;
+  const [mode, setMode] = useState<"grid" | "split" | "slider">(isMulti ? "grid" : "split");
+  const [activeRefIdx, setActiveRefIdx] = useState(0);
   const [sliderPos, setSliderPos] = useState(50);
   const [zoomFull, setZoomFull] = useState(false);
-  const [refDims, setRefDims] = useState<{ w: number; h: number } | null>(null);
+  const [refDimsMap, setRefDimsMap] = useState<Record<string, { w: number; h: number }>>({});
+
+  useEffect(() => {
+    setMode(refList.length > 1 ? "grid" : "split");
+    setActiveRefIdx(0);
+    setZoomFull(false);
+  }, [detail.id, refList.length]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -24,24 +50,57 @@ export const RefCompareModal: React.FC<Props> = ({ detail, onClose, onOpenRemix 
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const refUrl = detail.reference_image_url;
-  if (!refUrl) return null;
+  if (refList.length === 0) return null;
+
+  const activeRef = refList[Math.min(activeRefIdx, refList.length - 1)] || refList[0];
+  const activeRefDims = refDimsMap[activeRef.url] || null;
+  const totalGridTiles = refList.length + 1;
+
+  const gridColsClass =
+    totalGridTiles <= 2
+      ? "grid-cols-1 md:grid-cols-2"
+      : totalGridTiles === 3
+      ? "grid-cols-1 md:grid-cols-3"
+      : totalGridTiles === 4
+      ? "grid-cols-1 sm:grid-cols-2"
+      : totalGridTiles <= 6
+      ? "grid-cols-2 lg:grid-cols-3"
+      : "grid-cols-2 md:grid-cols-3 lg:grid-cols-4";
+
+  const recordRefDims = (url: string, el: HTMLImageElement) => {
+    if (el.naturalWidth > 0 && el.naturalHeight > 0) {
+      setRefDimsMap((prev) => {
+        const cur = prev[url];
+        if (cur && cur.w === el.naturalWidth && cur.h === el.naturalHeight) return prev;
+        return { ...prev, [url]: { w: el.naturalWidth, h: el.naturalHeight } };
+      });
+    }
+  };
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/88 backdrop-blur-sm flex items-center justify-center p-3"
+      className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-3"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="w-[96vw] max-w-[1680px] h-[92vh] bg-[#0e111a] border border-zinc-700/90 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+      <div className="w-[96vw] max-w-[1720px] h-[92vh] bg-[#0e111a] border border-zinc-700/90 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
         {/* Header */}
         <div className="px-4 py-2.5 border-b border-zinc-800 flex flex-wrap items-center justify-between gap-2 shrink-0 bg-[#111521]">
           <div className="flex items-center gap-2.5 min-w-0">
-            <Columns2 className="w-4 h-4 text-indigo-400 shrink-0" />
+            {isMulti ? (
+              <LayoutGrid className="w-4 h-4 text-amber-400 shrink-0" />
+            ) : (
+              <Columns2 className="w-4 h-4 text-indigo-400 shrink-0" />
+            )}
             <div className="min-w-0">
               <div className="text-xs font-semibold text-zinc-100 truncate">
-                {t("反推原图 vs 生成成品 分屏对比", "Reference vs Generated Split Comparison")}
+                {isMulti
+                  ? t(
+                      `多参考图 vs 生成成品 · ${totalGridTiles} 宫格对比（${refList.length} 张参考图 + 1 张成品）`,
+                      `Multi-Reference vs Output · ${totalGridTiles}-Tile Grid (${refList.length} refs + output)`
+                    )
+                  : t("参考原图 vs 生成成品 分屏对比", "Reference vs Generated Split Comparison")}
               </div>
               <div className="text-[11px] text-zinc-400 truncate">
                 {detail.filename}
@@ -50,9 +109,40 @@ export const RefCompareModal: React.FC<Props> = ({ detail, onClose, onOpenRemix 
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Reference picker when in 1v1 mode with multiple references */}
+            {isMulti && mode !== "grid" && (
+              <div className="flex items-center gap-1 rounded-lg bg-[#0a0d14] border border-zinc-800 p-0.5 text-[11px]">
+                {refList.map((r, idx) => (
+                  <button
+                    key={r.url}
+                    type="button"
+                    onClick={() => setActiveRefIdx(idx)}
+                    title={r.label || r.filename}
+                    className={`px-2 py-1 rounded-md font-medium transition-colors ${
+                      idx === activeRefIdx ? "bg-amber-500/85 text-black" : "text-zinc-400 hover:text-zinc-100"
+                    }`}
+                  >
+                    {t(`参考${idx + 1}`, `Ref ${idx + 1}`)}
+                  </button>
+                ))}
+              </div>
+            )}
+
             {/* Mode Switcher */}
             <div className="flex items-center rounded-lg bg-[#0a0d14] border border-zinc-800 p-0.5 text-[11px]">
+              {isMulti && (
+                <button
+                  type="button"
+                  onClick={() => setMode("grid")}
+                  className={`px-2.5 py-1 rounded-md flex items-center gap-1 font-medium transition-colors ${
+                    mode === "grid" ? "bg-indigo-600 text-white" : "text-zinc-400 hover:text-zinc-100"
+                  }`}
+                >
+                  <LayoutGrid className="w-3.5 h-3.5" />
+                  {t(`${totalGridTiles}宫格`, `${totalGridTiles}-Grid`)}
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setMode("split")}
@@ -63,16 +153,18 @@ export const RefCompareModal: React.FC<Props> = ({ detail, onClose, onOpenRemix 
                 <Columns2 className="w-3.5 h-3.5" />
                 {t("左右分屏", "Side-by-Side")}
               </button>
-              <button
-                type="button"
-                onClick={() => setMode("slider")}
-                className={`px-2.5 py-1 rounded-md flex items-center gap-1 font-medium transition-colors ${
-                  mode === "slider" ? "bg-indigo-600 text-white" : "text-zinc-400 hover:text-zinc-100"
-                }`}
-              >
-                <SlidersHorizontal className="w-3.5 h-3.5" />
-                {t("滑块叠加", "Overlay Slider")}
-              </button>
+              {detail.media_type !== "video" && (
+                <button
+                  type="button"
+                  onClick={() => setMode("slider")}
+                  className={`px-2.5 py-1 rounded-md flex items-center gap-1 font-medium transition-colors ${
+                    mode === "slider" ? "bg-indigo-600 text-white" : "text-zinc-400 hover:text-zinc-100"
+                  }`}
+                >
+                  <SlidersHorizontal className="w-3.5 h-3.5" />
+                  {t("滑块叠加", "Overlay Slider")}
+                </button>
+              )}
             </div>
 
             {mode === "split" && (
@@ -112,17 +204,101 @@ export const RefCompareModal: React.FC<Props> = ({ detail, onClose, onOpenRemix 
         </div>
 
         {/* Comparison Viewport */}
-        {mode === "split" ? (
+        {mode === "grid" ? (
+          /* N-Grid Mode: Ref 1 .. Ref K, Output Last */
+          <div
+            className={`flex-1 min-h-0 overflow-y-auto p-3 grid ${gridColsClass} gap-3 bg-[#07090e] auto-rows-[minmax(260px,1fr)]`}
+          >
+            {refList.map((refItem, idx) => {
+              const dims = refDimsMap[refItem.url];
+              return (
+                <div
+                  key={`${refItem.url}-${idx}`}
+                  className="rounded-xl border border-zinc-800 bg-[#0d111a] flex flex-col min-h-0 overflow-hidden"
+                >
+                  <div className="px-3 py-1.5 bg-[#121725] border-b border-zinc-800/80 flex items-center justify-between gap-2 text-[11px] shrink-0">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="px-2 py-0.5 rounded bg-amber-500/15 border border-amber-500/40 text-amber-200 font-semibold shrink-0">
+                        {t(`参考图 ${idx + 1}`, `Ref ${idx + 1}`)}
+                      </span>
+                      <span className="text-zinc-300 truncate" title={refItem.label || refItem.filename}>
+                        {refItem.label || refItem.filename}
+                      </span>
+                    </div>
+                    {dims && (
+                      <span className="text-zinc-400 font-mono shrink-0">
+                        {dims.w}×{dims.h}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex-1 min-h-0 flex items-center justify-center p-2 overflow-hidden bg-[#07090e]">
+                    <img
+                      src={refItem.url}
+                      alt={refItem.label || `Reference ${idx + 1}`}
+                      onLoad={(e) => recordRefDims(refItem.url, e.currentTarget)}
+                      className="max-w-full max-h-full object-contain rounded-lg"
+                    />
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Last tile: Generated Output */}
+            <div className="rounded-xl border border-indigo-500/60 ring-1 ring-indigo-500/30 bg-[#0d111a] flex flex-col min-h-0 overflow-hidden">
+              <div className="px-3 py-1.5 bg-indigo-950/50 border-b border-indigo-500/30 flex items-center justify-between gap-2 text-[11px] shrink-0">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="px-2 py-0.5 rounded bg-indigo-500/25 border border-indigo-400/50 text-indigo-100 font-semibold shrink-0">
+                    {t("成品图", "Output")}
+                  </span>
+                  <span className="text-zinc-200 truncate" title={detail.filename}>
+                    {detail.filename}
+                  </span>
+                </div>
+                <span className="text-indigo-200/80 font-mono shrink-0">
+                  {detail.width}×{detail.height}
+                </span>
+              </div>
+              <div className="flex-1 min-h-0 flex items-center justify-center p-2 overflow-hidden bg-[#07090e]">
+                {detail.media_type === "video" ? (
+                  <video
+                    src={detail.media_url}
+                    controls
+                    autoPlay
+                    loop
+                    playsInline
+                    className="max-w-full max-h-full object-contain rounded-lg"
+                  />
+                ) : (
+                  <img
+                    src={detail.media_url}
+                    alt={detail.filename}
+                    className="max-w-full max-h-full object-contain rounded-lg"
+                  />
+                )}
+              </div>
+            </div>
+          </div>
+        ) : mode === "split" ? (
+          /* Side-by-Side Split Mode */
           <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-zinc-800 bg-[#07090e]">
             {/* Left: Reference Image */}
             <div className="relative flex flex-col min-h-0 overflow-hidden">
-              <div className="px-3 py-1.5 bg-[#0d111a]/90 border-b border-zinc-800/80 flex items-center justify-between text-[11px] shrink-0">
-                <span className="px-2 py-0.5 rounded bg-amber-500/15 border border-amber-500/40 text-amber-200 font-semibold">
-                  {t("左 · 反推参考原图", "Left · Reference Image")}
-                </span>
-                {refDims && (
-                  <span className="text-zinc-400 font-mono">
-                    {refDims.w}×{refDims.h}
+              <div className="px-3 py-1.5 bg-[#0d111a]/90 border-b border-zinc-800/80 flex items-center justify-between gap-2 text-[11px] shrink-0">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="px-2 py-0.5 rounded bg-amber-500/15 border border-amber-500/40 text-amber-200 font-semibold shrink-0">
+                    {isMulti
+                      ? t(`左 · 参考图 ${activeRefIdx + 1}`, `Left · Ref ${activeRefIdx + 1}`)
+                      : t("左 · 参考原图", "Left · Reference Image")}
+                  </span>
+                  {activeRef.label && (
+                    <span className="text-zinc-400 truncate" title={activeRef.label}>
+                      {activeRef.label}
+                    </span>
+                  )}
+                </div>
+                {activeRefDims && (
+                  <span className="text-zinc-400 font-mono shrink-0">
+                    {activeRefDims.w}×{activeRefDims.h}
                   </span>
                 )}
               </div>
@@ -132,14 +308,9 @@ export const RefCompareModal: React.FC<Props> = ({ detail, onClose, onOpenRemix 
                 }`}
               >
                 <img
-                  src={refUrl}
-                  alt="Reference"
-                  onLoad={(e) => {
-                    const el = e.currentTarget;
-                    if (el.naturalWidth > 0 && el.naturalHeight > 0) {
-                      setRefDims({ w: el.naturalWidth, h: el.naturalHeight });
-                    }
-                  }}
+                  src={activeRef.url}
+                  alt={activeRef.label || "Reference"}
+                  onLoad={(e) => recordRefDims(activeRef.url, e.currentTarget)}
                   className={zoomFull ? "max-w-none" : "max-w-full max-h-full object-contain rounded-lg"}
                 />
               </div>
@@ -166,6 +337,7 @@ export const RefCompareModal: React.FC<Props> = ({ detail, onClose, onOpenRemix 
                     controls
                     autoPlay
                     loop
+                    playsInline
                     className="max-w-full max-h-full object-contain rounded-lg"
                   />
                 ) : (
@@ -192,8 +364,8 @@ export const RefCompareModal: React.FC<Props> = ({ detail, onClose, onOpenRemix 
                 style={{ clipPath: `inset(0 ${100 - sliderPos}% 0 0)` }}
               >
                 <img
-                  src={refUrl}
-                  alt="Reference"
+                  src={activeRef.url}
+                  alt={activeRef.label || "Reference"}
                   className="max-w-full max-h-full object-contain"
                 />
               </div>
@@ -203,7 +375,7 @@ export const RefCompareModal: React.FC<Props> = ({ detail, onClose, onOpenRemix 
                 style={{ left: `${sliderPos}%` }}
               />
               <span className="absolute top-3 left-3 px-2 py-0.5 rounded bg-black/70 border border-amber-500/40 text-[11px] text-amber-200 font-semibold pointer-events-none">
-                {t("原图", "Reference")}
+                {isMulti ? t(`参考图 ${activeRefIdx + 1}`, `Ref ${activeRefIdx + 1}`) : t("原图", "Reference")}
               </span>
               <span className="absolute top-3 right-3 px-2 py-0.5 rounded bg-black/70 border border-indigo-500/40 text-[11px] text-indigo-200 font-semibold pointer-events-none">
                 {t("成品图", "Generated")}

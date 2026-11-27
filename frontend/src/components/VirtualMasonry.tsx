@@ -186,22 +186,27 @@ const AssetCard = React.memo(function AssetCard({
               <Layers className="w-3 h-3" />×{item.recipe_count}
             </button>
           )}
-          {item.reference_image_url && onOpenRefCompare && (
-            <button
-              type="button"
-              title={t("对比原图", "Compare Ref")}
-              onClick={(e) => {
-                e.stopPropagation();
-                onOpenRefCompare(item);
-              }}
-              className="group/ref inline-flex items-center gap-1 p-1 hover:px-1.5 rounded-md bg-black/70 hover:bg-amber-500/95 backdrop-blur-sm text-[10px] font-semibold text-amber-300 hover:text-black border border-amber-400/45 shadow transition-all"
-            >
-              <Columns2 className="w-3.5 h-3.5 shrink-0" />
-              <span className="hidden group-hover/ref:inline whitespace-nowrap">
-                {t("对比原图", "Compare Ref")}
-              </span>
-            </button>
-          )}
+          {item.reference_image_url && onOpenRefCompare && (() => {
+            const refCount = item.reference_images?.length || 1;
+            const label =
+              refCount > 1
+                ? t(`对比原图 (${refCount}张)`, `Compare (${refCount})`)
+                : t("对比原图", "Compare Ref");
+            return (
+              <button
+                type="button"
+                title={label}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenRefCompare(item);
+                }}
+                className="group/ref inline-flex items-center gap-1 p-1 hover:px-1.5 rounded-md bg-black/70 hover:bg-amber-500/95 backdrop-blur-sm text-[10px] font-semibold text-amber-300 hover:text-black border border-amber-400/45 shadow transition-all"
+              >
+                <Columns2 className="w-3.5 h-3.5 shrink-0" />
+                <span className="hidden group-hover/ref:inline whitespace-nowrap">{label}</span>
+              </button>
+            );
+          })()}
           {item.flag === "pick" && (
             <span className="px-1.5 py-0.5 rounded-md bg-emerald-600/85 text-[10px] font-semibold text-white">
               {t("精选", "Pick")}
