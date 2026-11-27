@@ -229,9 +229,48 @@ export const InlinePromptWriterModal: React.FC<InlinePromptWriterProps> = ({
   const [attachFirstFrame, setAttachFirstFrame] = useState<boolean>(Boolean(detected.firstFrameImage));
   const [showWindow, setShowWindow] = useState<boolean>(false);
 
-  const [ideaText, setIdeaText] = useState<string>("");
-  const [outputText, setOutputText] = useState<string>("");
+  const draftKey = useMemo(
+    () => `${workflowName || "default"}::${nodeLabel || "prompt"}`,
+    [workflowName, nodeLabel]
+  );
+
+  const loadDraft = (): { idea: string; output: string } => {
+    try {
+      const raw = localStorage.getItem("comfyvault_inline_writer_drafts_v1");
+      const map = raw ? JSON.parse(raw) : {};
+      const entry = map && typeof map === "object" ? map[draftKey] : null;
+      if (entry && typeof entry === "object") {
+        return {
+          idea: typeof entry.idea === "string" ? entry.idea : "",
+          output: typeof entry.output === "string" ? entry.output : "",
+        };
+      }
+    } catch {}
+    return { idea: "", output: "" };
+  };
+
+  const saveDraft = (idea: string, output: string) => {
+    try {
+      const raw = localStorage.getItem("comfyvault_inline_writer_drafts_v1");
+      const map = raw ? JSON.parse(raw) : {};
+      const nextMap = map && typeof map === "object" ? map : {};
+      nextMap[draftKey] = { idea, output, updatedAt: Date.now() };
+      const keys = Object.keys(nextMap);
+      if (keys.length > 120) {
+        for (const k of keys.slice(0, keys.length - 100)) delete nextMap[k];
+      }
+      localStorage.setItem("comfyvault_inline_writer_drafts_v1", JSON.stringify(nextMap));
+    } catch {}
+  };
+
+  const initialDraft = useMemo(loadDraft, [draftKey]);
+  const [ideaText, setIdeaText] = useState<string>(initialDraft.idea);
+  const [outputText, setOutputText] = useState<string>(initialDraft.output);
   const [copied, setCopied] = useState<boolean>(false);
+
+  useEffect(() => {
+    saveDraft(ideaText, outputText);
+  }, [ideaText, outputText, draftKey]);
 
   const [generating, setGenerating] = useState<boolean>(false);
   const [openingLogin, setOpeningLogin] = useState<boolean>(false);
@@ -654,11 +693,23 @@ export const InlinePromptWriterModal: React.FC<InlinePromptWriterProps> = ({
 
           {/* Row 3: User idea input */}
           <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
               <label className="text-xs font-medium text-zinc-200">
                 {t("输入你想要的效果或一句话想法", "Describe the desired effect or a one-line idea")}
               </label>
-              <span className="text-[10px] text-zinc-500">Ctrl + Enter {t("提交", "to generate")}</span>
+              <div className="flex items-center gap-2">
+                {ideaText.trim() && (
+                  <button
+                    type="button"
+                    disabled={generating}
+                    onClick={() => setIdeaText("")}
+                    className="text-[10px] text-zinc-400 hover:text-rose-300 disabled:opacity-40"
+                  >
+                    {t("清空", "Clear")}
+                  </button>
+                )}
+                <span className="text-[10px] text-zinc-500">Ctrl + Enter {t("提交", "to generate")}</span>
+              </div>
             </div>
             <textarea
               value={ideaText}

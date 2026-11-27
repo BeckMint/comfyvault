@@ -78,7 +78,20 @@ export const PromptConverterModal: React.FC<Props> = ({
   onToast,
 }) => {
   const { t } = useI18n();
-  const [sourceText, setSourceText] = useState(initialSourceText);
+  const [sourceText, setSourceText] = useState(() => {
+    if (initialSourceText) return initialSourceText;
+    try {
+      return localStorage.getItem("comfyvault_converter_last_source") || "";
+    } catch {
+      return "";
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("comfyvault_converter_last_source", sourceText);
+    } catch {}
+  }, [sourceText]);
   const [referenceImage, setReferenceImage] = useState<File | null>(null);
   const [referencePreviewUrl, setReferencePreviewUrl] = useState<string | null>(null);
   const [referenceDims, setReferenceDims] = useState<{ width: number; height: number } | null>(null);
