@@ -21,6 +21,7 @@ import type { ComfyStatus, SnippetItem, WorkflowFileItem } from "../types";
 import { InlinePromptWriterModal } from "./InlinePromptWriterModal";
 import { PersistentTextarea } from "./PersistentTextarea";
 import { PowerLoraEditor } from "./PowerLoraEditor";
+import { WorkflowIconModal } from "./WorkflowIconModal";
 import type { WorkflowPrefillPayload } from "./PromptConverterModal";
 
 interface Props {
@@ -207,6 +208,7 @@ export const WorkflowCreateModal: React.FC<Props> = ({
     label: string;
     currentText: string;
   } | null>(null);
+  const [iconModalTarget, setIconModalTarget] = useState<WorkflowFileItem | null>(null);
   const [pinnedPaths, setPinnedPaths] = useState<Set<string>>(() => {
     try {
       const raw = localStorage.getItem("comfyvault_pinned_workflows");
@@ -602,8 +604,33 @@ export const WorkflowCreateModal: React.FC<Props> = ({
                           : "bg-[#131722] border-zinc-800/70 hover:border-zinc-700"
                       }`}
                     >
-                      <div className="flex items-start gap-2">
-                        <FileCode2 className={`w-4 h-4 mt-0.5 shrink-0 ${active ? "text-indigo-400" : pinned ? "text-amber-400" : "text-zinc-500"}`} />
+                      <div className="flex items-start gap-2.5">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setIconModalTarget(f);
+                          }}
+                          title={t("点击设置/更换自定义图标（支持拖拽、上传、粘贴）", "Click to set custom icon (drag, upload, or paste)")}
+                          className={`group/icon relative w-9 h-9 rounded-lg overflow-hidden shrink-0 border flex items-center justify-center transition-all ${
+                            f.icon_url
+                              ? "border-zinc-600/80 hover:border-indigo-400 bg-black"
+                              : active
+                              ? "bg-indigo-500/15 border-indigo-500/40 hover:border-indigo-400 text-indigo-300"
+                              : pinned
+                              ? "bg-amber-500/10 border-amber-500/30 hover:border-amber-400 text-amber-400"
+                              : "bg-[#0d1018] border-zinc-700/80 hover:border-indigo-400 text-zinc-500 hover:text-indigo-300"
+                          }`}
+                        >
+                          {f.icon_url ? (
+                            <img src={f.icon_url} alt={f.name} className="w-full h-full object-cover" />
+                          ) : (
+                            <FileCode2 className="w-4 h-4" />
+                          )}
+                          <span className="absolute inset-0 bg-black/60 opacity-0 group-hover/icon:opacity-100 flex items-center justify-center transition-opacity">
+                            <ImagePlus className="w-3.5 h-3.5 text-white" />
+                          </span>
+                        </button>
                         <div className="min-w-0 flex-1">
                           <div className="flex items-start justify-between gap-1.5">
                             <div className="text-xs font-medium text-zinc-100 break-words leading-snug" title={f.name}>
@@ -1094,6 +1121,22 @@ export const WorkflowCreateModal: React.FC<Props> = ({
           onClose={() => setAiWriterTarget(null)}
           onInsertText={(text) => updateInput(aiWriterTarget.nid, aiWriterTarget.key, text)}
           onToast={(msg, tone) => (tone === "err" ? onError(msg) : onSubmitted(msg))}
+        />
+      )}
+
+      {iconModalTarget && (
+        <WorkflowIconModal
+          workflowPath={iconModalTarget.path}
+          workflowName={iconModalTarget.name}
+          currentIconUrl={iconModalTarget.icon_url}
+          onClose={() => setIconModalTarget(null)}
+          onToast={(msg, tone) => (tone === "err" ? onError(msg) : onSubmitted(msg))}
+          onUpdated={(newUrl) => {
+            const targetPath = iconModalTarget.path;
+            setFiles((prev) =>
+              prev.map((x) => (x.path === targetPath ? { ...x, icon_url: newUrl } : x))
+            );
+          }}
         />
       )}
     </div>

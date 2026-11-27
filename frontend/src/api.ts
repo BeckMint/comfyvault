@@ -158,6 +158,20 @@ export const api = {
       body: JSON.stringify(payload),
     }),
   listWorkflowFiles: () => req<{ workflow_dirs: string[]; items: WorkflowFileItem[] }>("/api/workflows/files"),
+  uploadWorkflowIcon: async (path: string, file: File) => {
+    const fd = new FormData();
+    fd.append("path", path);
+    fd.append("image", file);
+    const res = await fetch("/api/workflows/icon", { method: "POST", body: fd });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    return data as { ok: boolean; icon_url: string };
+  },
+  deleteWorkflowIcon: (path: string) =>
+    req<{ ok: boolean }>("/api/workflows/icon", {
+      method: "DELETE",
+      body: JSON.stringify({ path }),
+    }),
   loadWorkflowFile: (path: string) =>
     req<{
       name: string;

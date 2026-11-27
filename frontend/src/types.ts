@@ -230,6 +230,7 @@ export interface WorkflowFileItem {
   mtime: number;
   format: "ui" | "api";
   node_count: number;
+  icon_url?: string | null;
 }
 
 export interface AssetFilter {

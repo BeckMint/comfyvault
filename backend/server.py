@@ -772,7 +772,16 @@ class VaultApp:
             }
         )
 
+    @staticmethod
+    def _workflow_icon_key(wf_path: str) -> str:
+        import hashlib
+
+        norm = os.path.normpath(str(wf_path or "").strip()).lower()
+        return hashlib.md5(norm.encode("utf-8")).hexdigest()[:16]
+
     async def handle_list_workflow_files(self, request: web.Request) -> web.Response:
+        from .config import DATA_DIR
+
         force = request.query.get("force") in ("1", "true")
         wf_dirs = await asyncio.to_thread(self.db.get_setting, "workflow_dirs", DEFAULT_WORKFLOW_DIRS)
         if not isinstance(wf_dirs, list):
@@ -781,14 +790,100 @@ class VaultApp:
         items, upserts, deleted = await asyncio.to_thread(scan_workflow_dirs, wf_dirs, cached, force)
         if upserts or deleted:
             await asyncio.to_thread(self.db.sync_workflow_files_cache, upserts, deleted)
+
+        icon_dir = DATA_DIR / "workflow_icons"
+        enriched = []
+        for it in items:
+            row = dict(it)
+            key = self._workflow_icon_key(row.get("path") or "")
+            icon_file = icon_dir / f"{key}.webp"
+            if icon_file.is_file():
+                try:
+                    v = icon_file.stat().st_mtime_ns
+                except OSError:
+                    v = 0
+                row["icon_url"] = f"/api/workflow-icons/{key}.webp?v={v}"
+            else:
+                row["icon_url"] = None
+            enriched.append(row)
+
         return web.json_response(
             {
                 "workflow_dirs": wf_dirs,
-                "items": items,
+                "items": enriched,
                 "updated_count": len(upserts),
-                "cached_count": len(items) - len(upserts),
+                "cached_count": len(enriched) - len(upserts),
             }
         )
+
+    async def handle_upload_workflow_icon(self, request: web.Request) -> web.Response:
+        import io
+        from PIL import Image, ImageOps
+        from .config import DATA_DIR
+
+        if not (request.content_type or "").lower().startswith("multipart/"):
+            return web.json_response({"error": "需要 multipart 表单上传图片"}, status=400)
+
+        reader = await request.multipart()
+        wf_path = ""
+        img_bytes = b""
+        while True:
+            part = await reader.next()
+            if part is None:
+                break
+            if part.name == "path":
+                wf_path = (await part.text()).strip()
+            elif part.name == "image":
+                img_bytes = await part.read(decode=False)
+
+        if not wf_path or not img_bytes:
+            return web.json_response({"error": "缺少工作流路径或图片内容"}, status=400)
+
+        key = self._workflow_icon_key(wf_path)
+        icon_dir = DATA_DIR / "workflow_icons"
+        icon_dir.mkdir(parents=True, exist_ok=True)
+        out_path = icon_dir / f"{key}.webp"
+
+        def _save_icon() -> int:
+            with Image.open(io.BytesIO(img_bytes)) as im:
+                im = ImageOps.exif_transpose(im)
+                if im.mode not in ("RGB", "RGBA"):
+                    im = im.convert("RGBA")
+                fitted = ImageOps.fit(im, (160, 160), Image.Resampling.LANCZOS)
+                fitted.save(out_path, format="WEBP", quality=88, method=4)
+            return out_path.stat().st_mtime_ns
+
+        try:
+            ver = await asyncio.to_thread(_save_icon)
+        except Exception as e:
+            return web.json_response({"error": f"图片处理失败: {e}"}, status=400)
+
+        return web.json_response({"ok": True, "icon_url": f"/api/workflow-icons/{key}.webp?v={ver}"})
+
+    async def handle_delete_workflow_icon(self, request: web.Request) -> web.Response:
+        from .config import DATA_DIR
+
+        body = await request.json()
+        wf_path = str(body.get("path") or "").strip()
+        if not wf_path:
+            return web.json_response({"error": "缺少工作流路径"}, status=400)
+        key = self._workflow_icon_key(wf_path)
+        icon_file = DATA_DIR / "workflow_icons" / f"{key}.webp"
+        try:
+            if icon_file.exists():
+                icon_file.unlink()
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=500)
+        return web.json_response({"ok": True})
+
+    async def handle_workflow_icon(self, request: web.Request) -> web.StreamResponse:
+        from .config import DATA_DIR
+
+        name = Path(request.match_info["name"]).name
+        p = DATA_DIR / "workflow_icons" / name
+        if not p.exists() or not p.is_file():
+            return web.Response(status=404)
+        return web.FileResponse(p, headers={"Cache-Control": "public, max-age=31536000"})
 
     async def handle_load_workflow_file(self, request: web.Request) -> web.Response:
         body = await request.json()
@@ -1474,6 +1569,9 @@ class VaultApp:
         app.router.add_get("/api/settings", self.handle_get_settings)
         app.router.add_put("/api/settings", self.handle_put_settings)
         app.router.add_get("/api/workflows/files", self.handle_list_workflow_files)
+        app.router.add_post("/api/workflows/icon", self.handle_upload_workflow_icon)
+        app.router.add_delete("/api/workflows/icon", self.handle_delete_workflow_icon)
+        app.router.add_get("/api/workflow-icons/{name}", self.handle_workflow_icon)
         app.router.add_post("/api/workflows/load-file", self.handle_load_workflow_file)
         app.router.add_post("/api/workflows/save-file", self.handle_save_workflow_file)
         app.router.add_get("/api/workflows/templates", self.handle_list_workflow_templates)

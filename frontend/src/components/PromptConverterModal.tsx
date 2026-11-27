@@ -22,6 +22,7 @@ import {
 import { api, formatBytes } from "../api";
 import { useI18n } from "../i18n";
 import type { WorkflowFileItem } from "../types";
+import { WorkflowIconModal } from "./WorkflowIconModal";
 
 export interface WorkflowPrefillPayload {
   workflowPath: string;
@@ -80,6 +81,9 @@ export const PromptConverterModal: React.FC<Props> = ({
   const [referenceDims, setReferenceDims] = useState<{ width: number; height: number } | null>(null);
   const [dragOverImage, setDragOverImage] = useState(false);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
+  const [iconModalTarget, setIconModalTarget] = useState<WorkflowFileItem | null>(null);
+  const iconModalOpenRef = useRef(false);
+  iconModalOpenRef.current = Boolean(iconModalTarget);
 
   const attachReferenceFile = (file: File | null) => {
     if (!file) {
@@ -118,6 +122,7 @@ export const PromptConverterModal: React.FC<Props> = ({
 
   useEffect(() => {
     const onPaste = (e: ClipboardEvent) => {
+      if (iconModalOpenRef.current) return;
       const items = e.clipboardData?.items;
       if (!items) return;
       for (let i = 0; i < items.length; i++) {
@@ -480,11 +485,18 @@ export const PromptConverterModal: React.FC<Props> = ({
                 const active = selectedWfPath === f.path;
                 const pinned = pinnedPaths.has(f.path);
                 return (
-                  <button
+                  <div
                     key={f.path}
-                    type="button"
+                    role="button"
+                    tabIndex={0}
                     onClick={() => setSelectedWfPath(f.path)}
-                    className={`w-full text-left p-2.5 rounded-xl border transition-colors ${
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setSelectedWfPath(f.path);
+                      }
+                    }}
+                    className={`w-full text-left p-2.5 rounded-xl border transition-colors cursor-pointer ${
                       active
                         ? "bg-indigo-600/20 border-indigo-500/60"
                         : pinned
@@ -492,12 +504,33 @@ export const PromptConverterModal: React.FC<Props> = ({
                         : "bg-[#131722] border-zinc-800/70 hover:border-zinc-700"
                     }`}
                   >
-                    <div className="flex items-start gap-2">
-                      <FileCode2
-                        className={`w-4 h-4 mt-0.5 shrink-0 ${
-                          active ? "text-indigo-400" : pinned ? "text-amber-400" : "text-zinc-500"
+                    <div className="flex items-start gap-2.5">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setIconModalTarget(f);
+                        }}
+                        title={t("点击设置/更换自定义图标（支持拖拽、上传、粘贴）", "Click to set custom icon (drag, upload, or paste)")}
+                        className={`group/icon relative w-9 h-9 rounded-lg overflow-hidden shrink-0 border flex items-center justify-center transition-all ${
+                          f.icon_url
+                            ? "border-zinc-600/80 hover:border-indigo-400 bg-black"
+                            : active
+                            ? "bg-indigo-500/15 border-indigo-500/40 hover:border-indigo-400 text-indigo-300"
+                            : pinned
+                            ? "bg-amber-500/10 border-amber-500/30 hover:border-amber-400 text-amber-400"
+                            : "bg-[#0d1018] border-zinc-700/80 hover:border-indigo-400 text-zinc-500 hover:text-indigo-300"
                         }`}
-                      />
+                      >
+                        {f.icon_url ? (
+                          <img src={f.icon_url} alt={f.name} className="w-full h-full object-cover" />
+                        ) : (
+                          <FileCode2 className="w-4 h-4" />
+                        )}
+                        <span className="absolute inset-0 bg-black/60 opacity-0 group-hover/icon:opacity-100 flex items-center justify-center transition-opacity">
+                          <ImagePlus className="w-3.5 h-3.5 text-white" />
+                        </span>
+                      </button>
                       <div className="min-w-0 flex-1">
                         <div className="text-xs font-medium text-zinc-100 break-words leading-snug">{f.name}</div>
                         <div className="flex items-center gap-2 mt-1 text-[10px] text-zinc-500">
@@ -510,7 +543,7 @@ export const PromptConverterModal: React.FC<Props> = ({
                         </div>
                       </div>
                     </div>
-                  </button>
+                  </div>
                 );
               })}
             </div>
@@ -1086,6 +1119,22 @@ export const PromptConverterModal: React.FC<Props> = ({
           </div>
         </div>
       </div>
+
+      {iconModalTarget && (
+        <WorkflowIconModal
+          workflowPath={iconModalTarget.path}
+          workflowName={iconModalTarget.name}
+          currentIconUrl={iconModalTarget.icon_url}
+          onClose={() => setIconModalTarget(null)}
+          onToast={onToast}
+          onUpdated={(newUrl) => {
+            const targetPath = iconModalTarget.path;
+            setFiles((prev) =>
+              prev.map((x) => (x.path === targetPath ? { ...x, icon_url: newUrl } : x))
+            );
+          }}
+        />
+      )}
     </div>
   );
 };
