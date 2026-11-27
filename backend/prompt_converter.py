@@ -149,7 +149,7 @@ def build_conversion_instruction(
     if concise and has_image:
         # Compact, high-density prompt tailored for local 4B VLMs (2-3x faster & sharper instruction following)
         excl = (
-            "STRICTLY OMIT: (1) reference person's facial features/bone structure/identity, "
+            "STRICTLY OMIT: (1) reference person's natural facial bone structure/identity (NEVER omit worn face/head accessories like masks, respirators, glasses, blindfolds, hats, or headwear!), "
             "(2) body type/bust/waist/hips proportions, "
             "(3) aspect ratio, vertical/horizontal framing words, or resolution (e.g. 9:16, 4:5, vertical portrait, 4K), "
             "(4) any watermarks, date stamps, logos, text overlays, or @handles visible in the photo."
@@ -161,11 +161,11 @@ def build_conversion_instruction(
             f"Write a cohesive 2-3 paragraph ({out_lang}, ~180-250 words) image generation prompt for {model_family or 'Krea 2'} "
             "reverse-engineered strictly from what is ACTUALLY visible in the attached photo (NEVER invent body parts or objects outside the frame).\n"
             f"{excl}\n"
-            "COMPOSITION & WARDROBE LOCK (HIGHEST PRIORITY — NEVER INVENT OR OMIT):\n"
-            "1. FIRST SENTENCE: unmistakable camera pitch + angle + exact crop (e.g. high-angle downward / low-angle upward / eye-level; close-up chest-up / waist-up / thigh-up / full-body). State the exact bottom crop line (if cropped at ribcage/waist, state 'hips and lower body out of frame'). Only mention Dutch tilt if the photo is visibly tilted.\n"
-            "2. MANDATORY WARDROBE LOCK (CRITICAL — NEVER OMIT CLOTHING): You MUST explicitly describe EVERY garment actually worn in the photo — BOTH upper garment (exact type, color, pattern, straps, e.g. yellow-and-white striped triangle bikini top, white sheer lace cardigan slipped off her arms) AND lower garment (e.g. matching side-tie bikini bottoms, skirt, shorts) if visible! NEVER omit a visible top or bottom garment — omitting clothing causes character LoRAs to render unintended nudity!\n"
+            "COMPOSITION, WARDROBE & PROPS LOCK (HIGHEST PRIORITY — NEVER INVENT OR OMIT):\n"
+            "1. FIRST SENTENCE: unmistakable camera pitch + angle + exact crop matching the REAL visible bottom edge (full-body kneeling/standing with floor visible, thigh-up, waist-up, or chest-up — NEVER contradict yourself!). Only mention Dutch tilt if visibly tilted.\n"
+            "2. MANDATORY WARDROBE, FACEWEAR & PROPS LOCK (NEVER OMIT): Explicitly describe EVERY visible garment (upper, lower, outerwear, footwear/boots/stockings), EVERY worn face/head/body accessory (half-face mask, respirator, glasses, blindfold, headwear, choker, cuffs, gloves, harness, jewelry), and EVERY handheld or scene prop (whip, umbrella, phone, bag, mannequin, etc.) with exact color, material, and how she wears or holds it!\n"
             "3. VIEWER-FRAME LEFT/RIGHT (NEVER MIRROR): anchor EVERY arm, hand, leg, head tilt, and prop to SCREEN coordinates ('on the left/right side of the frame') rather than only 'her left/right'. Describe any large blurred foreground limb/object if present.\n"
-            "4. POSE, EXPRESSION, LIGHTING & SCENE: exact limb/leg positions and what each hand touches/holds; exact mouth/eye expression (never write negative filler like 'tongue not visible'); exposure key (bright high-key direct sun vs low-key), light direction, cast shadows; hairstyle/highlights and exact background architecture/plants/sky.\n"
+            "4. POSE, EXPRESSION, LIGHTING & SCENE: exact limb/leg positions and what each hand touches/holds; exact mouth/eye expression (or visible eyes above a mask); exposure key (bright high-key direct sun vs low-key), light direction, cast shadows; hairstyle/highlights and exact background architecture/plants/sky.\n"
             f"Refer to the subject neutrally ('the woman'/'she').\n"
             "EXPOSURE / COVERAGE ASSESSMENT (MANDATORY FIRST LINE INSIDE MARKERS):\n"
             "Before the prompt, output ONE exact classification line judging the reference photo's actual nudity/coverage:\n"
@@ -183,7 +183,7 @@ def build_conversion_instruction(
             "IMPORTANT MODE: LoRA Character-Locked Template (the workflow already prepends the LoRA character's fixed face & body trigger block before '------').\n"
             "Goal: Write a plain-text prompt describing the reference scene/composition/photography while letting the LoRA character completely keep her own facial structure and body proportions.\n"
             "STRICT EXCLUSIONS — YOU MUST COMPLETELY OMIT:\n"
-            "1. Facial shape, facial features & identity (face shape, eyes, nose, lips, jawline, skin tone, ethnicity, age, beauty adjectives).\n"
+            "1. Natural facial shape, facial features & identity (face shape, eyes, nose, lips, jawline, skin tone, ethnicity, age, beauty adjectives) — NOTE: NEVER omit worn face/head accessories such as masks, respirators, glasses, sunglasses, blindfolds, hats, headbands, or animal ears!\n"
             "2. Body type & body proportions (bust/chest size, waist, hips, height, build, slim/curvy/voluptuous descriptions).\n"
             "3. Aspect ratio, canvas orientation, framing ratio, or resolution (e.g., 9:16, 4:5, 2:3, 16:9, 'vertical portrait framing', 'horizontal widescreen', 'square format', '4K') — the workflow's resolution node already controls the canvas aspect ratio.\n"
             "4. Any watermarks, date stamps, corner logos, text overlays, or social media @handles present in the reference photo.\n"
@@ -231,7 +231,7 @@ def build_conversion_instruction(
             "   - POSE: state exact limb screen positions, elevation, and body tilt relative to landmarks (never vague summaries alone).\n"
             "   - EXPRESSION: never settle for generic 'gentle smile'; specify exact mouth/teeth/tongue state (e.g. tongue playfully peeking between parted lips, open-mouth grin showing teeth, pout, closed lips), eye gaze, and head tilt.\n"
             "   - LIGHTING & CAST SHADOWS: state exposure key (bright high-key direct sunlight vs moody low-key), light direction, rim light, and the EXACT body/surface placement of any visible cast shadows or light patterns.\n"
-            "   - MANDATORY WARDROBE COVERAGE LOCK (CRITICAL): If the reference subject is clothed or wearing swimwear/lingerie, you MUST explicitly describe EVERY visible garment — BOTH upper garment (exact type, color, pattern, straps/outerwear, e.g., yellow-and-white striped triangle bikini top, sheer white lace cover-up slipped off her shoulders) AND lower garment (e.g., matching side-tie bikini bottoms, skirt, shorts) — NEVER omit a visible top or bottom garment, or character LoRAs will hallucinate unintended nudity! Only describe nudity if the reference photo itself is genuinely nude.\n"
+            "   - MANDATORY WARDROBE, FACEWEAR & PROPS LOCK (CRITICAL): Explicitly describe EVERY visible garment (upper, lower, outerwear, footwear/boots/stockings), EVERY worn face/head/body accessory (half-face mask, respirator, glasses, sunglasses, blindfold, hat, headband, collar/choker, cuffs, gloves, harness, jewelry), and EVERY handheld or scene prop (whip, umbrella, phone, fan, bag, mannequin, etc.) with exact color, material, and placement! NEVER omit a visible mask/prop or a visible top/bottom garment.\n"
             "   - HAIR & BACKGROUND: specify exact hairstyle/highlights and accurate background architecture/sky/props.\n"
             "6. LoRA Character Preservation: NEVER describe the reference person's fixed facial bone structure/features or body proportions/bust/waist/hips, and NEVER mention watermarks, date stamps, logos, or @handles.\n"
         )
