@@ -1129,9 +1129,24 @@ class VaultApp:
         model_family_override = str(body.get("model_family") or "").strip()
         lang_pref = str(body.get("lang_pref") or "auto").strip().lower()
         media_type = str(body.get("media_type") or "").strip().lower()
+        comfy_input_image = str(body.get("comfy_input_image") or "").strip()
         raw_has_divider = body.get("has_divider", None)
         raw_show = body.get("show_window", False)
         show_window = raw_show if isinstance(raw_show, bool) else str(raw_show).strip().lower() in ("1", "true", "yes")
+
+        # If caller referenced an existing ComfyUI/input image (e.g. I2V workflow LoadImage first frame), resolve it safely
+        if not saved_ref_image_path and comfy_input_image:
+            from .config import COMFY_ROOT
+
+            clean_in = comfy_input_image
+            if clean_in.endswith(" [input]"):
+                clean_in = clean_in[:-8].strip()
+            clean_in = clean_in.replace("\\", "/").lstrip("/")
+            if clean_in and ".." not in clean_in.split("/"):
+                cand = (COMFY_ROOT / "input" / clean_in).resolve()
+                input_root = (COMFY_ROOT / "input").resolve()
+                if str(cand).lower().startswith(str(input_root).lower() + os.sep) and cand.is_file():
+                    saved_ref_image_path = cand
 
         if not source_text and not saved_ref_image_path:
             return web.json_response({"error": "请输入原始提示词/一句话想法，或上传一张参考图进行反推"}, status=400)

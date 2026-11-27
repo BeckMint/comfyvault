@@ -65,10 +65,12 @@ export function detectWorkflowContext(
   modelFamily: string;
   mediaType: "image" | "video";
   rawModelName: string;
+  firstFrameImage: string;
 } {
   let mediaType: "image" | "video" = "image";
   let rawModelName = (baseModel || "").trim();
   const candidates: string[] = [];
+  const loadImages: Array<{ nid: string; image: string }> = [];
 
   if (baseModel) candidates.push(baseModel);
   if (workflowName) candidates.push(workflowName);
@@ -120,8 +122,19 @@ export function detectWorkflowContext(
       if (ctl.includes("minimax")) candidates.push("MiniMax H3");
       if (ctl.includes("wanvideo")) candidates.push("Wan 2.2");
       if (ctl.includes("ltx")) candidates.push("LTX-2.3");
+
+      // LoadImage first-frame reference detection (for I2V / I2I consistency)
+      if (ctl.includes("loadimage") && !ctl.includes("loadimageoutput") && inputs && typeof inputs === "object") {
+        const rawImg = inputs.image || inputs.image_path || inputs.widget_0;
+        if (typeof rawImg === "string" && rawImg.trim() && rawImg.trim().toLowerCase() !== "image") {
+          loadImages.push({ nid, image: rawImg.trim() });
+        }
+      }
     }
   }
+
+  loadImages.sort((a, b) => a.nid.localeCompare(b.nid, undefined, { numeric: true }));
+  const firstFrameImage = loadImages[0]?.image || "";
 
   let modelFamily = "";
   for (const c of candidates) {
@@ -150,7 +163,7 @@ export function detectWorkflowContext(
     mediaType = "video";
   }
 
-  return { modelFamily, mediaType, rawModelName };
+  return { modelFamily, mediaType, rawModelName, firstFrameImage };
 }
 
 function splitDividerLocal(text: string): { hasDivider: boolean; fixedPrefix: string } {
@@ -213,6 +226,7 @@ export const InlinePromptWriterModal: React.FC<InlinePromptWriterProps> = ({
   const [mediaType, setMediaType] = useState<"image" | "video">(detected.mediaType);
   const [langPref, setLangPref] = useState<"auto" | "en" | "zh">("auto");
   const [useDividerMode, setUseDividerMode] = useState<boolean>(dividerInfo.hasDivider);
+  const [attachFirstFrame, setAttachFirstFrame] = useState<boolean>(Boolean(detected.firstFrameImage));
   const [showWindow, setShowWindow] = useState<boolean>(false);
 
   const [ideaText, setIdeaText] = useState<string>("");
@@ -294,7 +308,8 @@ export const InlinePromptWriterModal: React.FC<InlinePromptWriterProps> = ({
 
   const handleGenerate = async () => {
     const trimmed = ideaText.trim();
-    if (!trimmed) {
+    const hasAttachedFrame = Boolean(attachFirstFrame && detected.firstFrameImage);
+    if (!trimmed && !hasAttachedFrame) {
       setErrorMsg(t("请先输入你想要的效果或一句话想法", "Please enter your desired effect or a one-line idea first"));
       return;
     }
@@ -336,6 +351,7 @@ export const InlinePromptWriterModal: React.FC<InlinePromptWriterProps> = ({
         model_family: modelFamily === "通用自然语言" ? "" : modelFamily,
         media_type: mediaType,
         has_divider: useDividerMode,
+        comfy_input_image: attachFirstFrame && detected.firstFrameImage ? detected.firstFrameImage : undefined,
         lang_pref: langPref,
         show_window: showWindow,
       });
@@ -517,6 +533,36 @@ export const InlinePromptWriterModal: React.FC<InlinePromptWriterProps> = ({
               </div>
             </div>
 
+            {detected.firstFrameImage && (
+              <div className="pt-2 border-t border-zinc-800/80 flex items-center gap-3">
+                <img
+                  src={`/api/comfy/input-image?name=${encodeURIComponent(detected.firstFrameImage)}`}
+                  alt={detected.firstFrameImage}
+                  className="w-12 h-12 rounded-lg object-cover border border-indigo-500/40 bg-black shrink-0"
+                />
+                <label className="flex items-start gap-2 text-[11px] text-indigo-200 cursor-pointer select-none flex-1 min-w-0">
+                  <input
+                    type="checkbox"
+                    checked={attachFirstFrame}
+                    disabled={generating}
+                    onChange={(e) => setAttachFirstFrame(e.target.checked)}
+                    className="accent-indigo-500 mt-0.5 shrink-0"
+                  />
+                  <span className="leading-snug">
+                    {mediaType === "video"
+                      ? t(
+                          `自动附带工作流首帧参考图（${detected.firstFrameImage}）给大模型看图写词：严格锁定首帧人物、服装、道具与场景，禁止切镜换人`,
+                          `Attach workflow first-frame (${detected.firstFrameImage}) so AI locks subject, outfit, props & scene with zero hard cuts`
+                        )
+                      : t(
+                          `自动附带工作流输入参考图（${detected.firstFrameImage}）给大模型看图写词`,
+                          `Attach workflow input image (${detected.firstFrameImage}) for vision-guided prompt writing`
+                        )}
+                  </span>
+                </label>
+              </div>
+            )}
+
             {dividerInfo.hasDivider && (
               <label className="flex items-center gap-2 pt-1 text-[11px] text-amber-300/90 cursor-pointer select-none">
                 <input
@@ -645,7 +691,7 @@ export const InlinePromptWriterModal: React.FC<InlinePromptWriterProps> = ({
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                disabled={generating || !ideaText.trim()}
+                disabled={generating || (!ideaText.trim() && !(attachFirstFrame && detected.firstFrameImage))}
                 onClick={handleGenerate}
                 className="flex-1 h-10 rounded-xl bg-gradient-to-r from-indigo-600 to-fuchsia-600 hover:from-indigo-500 hover:to-fuchsia-500 disabled:opacity-50 text-white text-xs font-semibold flex items-center justify-center gap-2 shadow-lg shadow-indigo-900/30 transition-all"
               >

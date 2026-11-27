@@ -146,6 +146,23 @@ def build_conversion_instruction(
     start_marker = f"<<<PROMPT_START_{run_tag}>>>" if run_tag else "<<<PROMPT_START>>>"
     end_marker = f"<<<PROMPT_END_{run_tag}>>>" if run_tag else "<<<PROMPT_END>>>"
 
+    if mt == "video" and has_image:
+        # Dedicated I2V / I2VA First-Frame Consistency Prompt (prevents identity swap & outfit hallucination after 1s!)
+        action_req = src if src else "Natural, lifelike subtle movement, gentle breathing, micro-expressions, and smooth camera motion."
+        return (
+            "CRITICAL: TEXT-ONLY RESPONSE. Do NOT generate, draw, edit, or render any image or video.\n"
+            f"You are an expert Image-to-Video (I2V / I2VA) director writing a continuous single-take video prompt for {model_family or 'MiniMax H3 / Wan 2.2'}.\n"
+            f"{guide}\n"
+            f"Output language: {out_lang}.\n\n"
+            "STRICT FIRST-FRAME CONSISTENCY RULES (HIGHEST PRIORITY — PREVENT IDENTITY SWAP AFTER 1 SECOND):\n"
+            "1. LOCK THE ATTACHED FIRST FRAME (t=0s): Carefully reverse-engineer and faithfully preserve the EXACT subject's appearance, hairstyle, outfit/swimwear/harness/boots, face/head accessories (masks, glasses, chokers, cuffs), handheld props, room/environment, and lighting from the attached image. NEVER invent a different outfit, different hairstyle, or different room/darkness that contradicts the attached image!\n"
+            "2. SINGLE CONTINUOUS UNBROKEN SHOT (NO HARD CUTS): Begin the video directly from the exact pose, framing, and camera angle of the attached first frame. STRICTLY FORBID hard cuts, scene switches, or 'cut to / 镜头切换' — hard cuts cause I2V models to discard the first frame and swap to a different person!\n"
+            "3. CONTINUOUS CAMERA & PHYSICS: Use smooth, unbroken camera movement (gentle push-in, smooth handheld tracking, slight arc, or steady locked-off camera) within the SAME lighting and environment from start to finish. Describe natural continuous body motion, hair/clothing physics, facial micro-expressions, and ambient sound/atmosphere if appropriate for the model.\n"
+            "4. CONCISE & DIRECT (2-3 cohesive paragraphs, ~180-260 words): No explanations, no bullet lists, no watermarks or @handles.\n\n"
+            f"USER'S DESIRED VIDEO ACTION / MOTION (choreograph this smoothly onto the EXACT locked subject, outfit, and scene from the attached first frame):\n{action_req}\n\n"
+            f"Output ONLY the final video prompt wrapped strictly between {start_marker} and {end_marker}."
+        )
+
     if concise and has_image:
         # Compact, high-density prompt tailored for local 4B VLMs (2-3x faster & sharper instruction following)
         excl = (

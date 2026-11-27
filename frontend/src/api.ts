@@ -285,6 +285,7 @@ export const api = {
     model_family?: string;
     media_type?: "image" | "video";
     has_divider?: boolean;
+    comfy_input_image?: string;
     lang_pref?: "auto" | "en" | "zh";
     show_window?: boolean;
     image?: File | null;
@@ -317,6 +318,7 @@ export const api = {
       if (payload.model_family) fd.append("model_family", payload.model_family);
       if (payload.media_type) fd.append("media_type", payload.media_type);
       if (payload.has_divider !== undefined) fd.append("has_divider", payload.has_divider ? "true" : "false");
+      if (payload.comfy_input_image) fd.append("comfy_input_image", payload.comfy_input_image);
       if (payload.lang_pref) fd.append("lang_pref", payload.lang_pref);
       fd.append("show_window", payload.show_window ? "true" : "false");
       fd.append("image", payload.image);
