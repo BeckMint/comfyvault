@@ -11,9 +11,11 @@ from typing import Any, Callable, Dict, List, Optional
 
 import aiohttp
 
-from .config import COMFY_HTTP_URL, COMFY_WS_URL, OUTPUT_DIR, detect_comfy_version
+from .config import COMFY_HTTP_URL, COMFY_WS_URL, DATA_DIR, OUTPUT_DIR, detect_comfy_version
 from .db import VaultDB
 from .scanner import AssetScanner
+
+_PENDING_META_FILE = DATA_DIR / "pending_prompt_meta.json"
 
 
 class _MEMORYSTATUSEX(ctypes.Structure):
@@ -105,6 +107,7 @@ class ComfyBridge:
         self._prompt_node_titles: Dict[str, Dict[str, str]] = {}
         self._lineage_map: Dict[str, int] = {}
         self._ref_image_map: Dict[str, str] = {}
+        self._load_pending_meta()
         self._node_started_at: Optional[float] = None
         self._last_step_at: Optional[float] = None
         self._last_step_value: int = 0
@@ -122,6 +125,35 @@ class ComfyBridge:
                 )
             )
         )
+
+    def _load_pending_meta(self) -> None:
+        try:
+            if _PENDING_META_FILE.is_file():
+                data = json.loads(_PENDING_META_FILE.read_text(encoding="utf-8", errors="ignore"))
+                if isinstance(data, dict):
+                    if isinstance(data.get("lineage"), dict):
+                        self._lineage_map = {str(k): int(v) for k, v in data["lineage"].items()}
+                    if isinstance(data.get("ref_images"), dict):
+                        self._ref_image_map = {str(k): str(v) for k, v in data["ref_images"].items()}
+        except Exception:
+            pass
+
+    def _save_pending_meta(self) -> None:
+        try:
+            # Keep only the most recent 200 entries so file stays tiny
+            if len(self._lineage_map) > 200:
+                for k in list(self._lineage_map.keys())[:-200]:
+                    self._lineage_map.pop(k, None)
+            if len(self._ref_image_map) > 200:
+                for k in list(self._ref_image_map.keys())[:-200]:
+                    self._ref_image_map.pop(k, None)
+            _PENDING_META_FILE.parent.mkdir(parents=True, exist_ok=True)
+            _PENDING_META_FILE.write_text(
+                json.dumps({"lineage": self._lineage_map, "ref_images": self._ref_image_map}, ensure_ascii=False),
+                encoding="utf-8",
+            )
+        except Exception:
+            pass
 
     def _emit(self, event_type: str, payload: Dict[str, Any]) -> None:
         if self.notify_cb:
@@ -579,6 +611,8 @@ class ComfyBridge:
             gen_duration = round(time.time() - started, 2)
         parent_id = self._lineage_map.pop(prompt_id, None)
         ref_image = self._ref_image_map.pop(prompt_id, None)
+        if parent_id is not None or ref_image is not None:
+            self._save_pending_meta()
 
         outputs = entry.get("outputs") or {}
         indexed_ids = []
@@ -658,6 +692,8 @@ class ComfyBridge:
                         self._lineage_map[pid] = parent_id
                     if reference_image:
                         self._ref_image_map[pid] = reference_image
+                    if parent_id or reference_image:
+                        self._save_pending_meta()
                 return body
 
     async def interrupt_execution(self) -> None:
