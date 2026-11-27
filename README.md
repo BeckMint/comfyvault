@@ -2,7 +2,7 @@
 
 # ComfyVault `v0.1.58`
 
-**The All-in-One Local Studio for ComfyUI: 60fps Gallery, 3-Engine AI Reverse-Prompter, Multi-Ref Split/Grid Compare, Visual Workflow Launcher & Live VRAM/RAM Guard**
+**The All-in-One Local Studio for ComfyUI: Virtualized Gallery, 3-Engine AI Reverse-Prompter, Multi-Ref Split/Grid Compare, Visual Workflow Launcher & Live VRAM/RAM Guard**
 
 ![Version](https://img.shields.io/badge/version-0.1.58-indigo) ![License](https://img.shields.io/badge/license-MIT-emerald) ![Local-First](https://img.shields.io/badge/100%25-Local--First-sky) ![Bilingual](https://img.shields.io/badge/UI-EN%20%7C%20%E4%B8%AD%E6%96%87-violet)
 
@@ -22,7 +22,7 @@ Running ComfyUI at scale quickly turns `ComfyUI/output/` and `workflows/` into c
 
 | Common ComfyUI Pain Point | How ComfyVault Solves It |
 |---|---|
-| **Thousands of images & videos buried in `output/`** | 60fps virtualized gallery with live `watchdog` indexing, PyAV MP4/WebM metadata recovery, faceted search, and Seed Recipe grouping. |
+| **Thousands of images & videos buried in `output/`** | Smooth virtualized gallery with WebP thumbnails, live `watchdog` indexing, PyAV MP4/WebM metadata recovery, faceted search, and Seed Recipe grouping. |
 | **200+ text-only `.json` workflow files** | Visual Workflow Launcher with **custom drag/upload/`Ctrl+V` workflow icons**, pinned workflows, pinned nodes, and remembered prompt box heights. |
 | **Reverse-prompting a reference photo overwrites your LoRA character** | **3-Engine AI Reverse-Prompter** (Gemini Web, ChatGPT Web, **Offline Uncensored Local Qwen3-VL**) with `------` character-lock awareness, camera/pose/lighting fidelity lock, and auto aspect-ratio matching. |
 | **Can't tell how closely an output matched the reference(s)** | **1-Click Reference vs Output Compare**: auto-detects both reverse-prompt references *and* workflow `LoadImage` inputs — **Side-by-Side / Slider** for 1 ref, **N-Grid** for multi-ref! |
@@ -60,7 +60,7 @@ Running ComfyUI at scale quickly turns `ComfyUI/output/` and `workflows/` into c
 - **Anti-Misclick Stop Control**: The progress bar's Stop button sits on the **left** (far away from top-right *Create*) and requires a **3-second two-step confirmation** so a mouse slip never kills a 15-minute video render.
 - **Exact Generation Time vs Video Length**: Reads exact millisecond `execution_start → execution_success` duration from ComfyUI `/history` (preserved across disk rescans and restarts) and displays **Gen Time** (e.g. `18m 53s`) separately from **Video Length** (`10.12s · 24fps`).
 
-### 5. 60fps Video-First Gallery, PyAV Metadata & WebGL2 Darkroom
+### 5. Virtualized Video-First Gallery, PyAV Metadata & WebGL2 Darkroom
 - **Video-Friendly Playback**: Video cards feature a centered **Play / Pause** button (clicking anywhere else selects without playing), right-drawer previews never autoplay, **all videos play once without looping**, and global mutual exclusion guarantees at most one video plays at a time (auto-pausing whenever any modal opens).
 - **Zero-Stub Media Integrity**: Built-in **PyAV** fast MP4/WebM metadata extraction & completeness guard + deferred indexing while ComfyUI is actively writing prevents half-written `48 B` video stubs or `512×512` placeholder thumbnails.
 - **WebGL2 Hardware-Accelerated Lightbox**: Smooth darkroom zoom up to 400%, drag pan, and lossless 3D rotate/flip (`Q`/`E`/`H`/`V`) that preserves embedded PNG metadata on auto-save.
