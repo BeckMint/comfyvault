@@ -1,10 +1,10 @@
 <div align="center">
 
-# ComfyVault `v0.1.60`
+# ComfyVault `v0.1.61`
 
 **The All-in-One Local Studio for ComfyUI: Virtualized Gallery, 3-Engine AI Reverse-Prompter, Multi-Ref Split/Grid Compare, Visual Workflow Launcher & Live VRAM/RAM Guard**
 
-![Version](https://img.shields.io/badge/version-0.1.60-indigo) ![License](https://img.shields.io/badge/license-MIT-emerald) ![Local-First](https://img.shields.io/badge/100%25-Local--First-sky) ![Bilingual](https://img.shields.io/badge/UI-EN%20%7C%20%E4%B8%AD%E6%96%87-violet)
+![Version](https://img.shields.io/badge/version-0.1.61-indigo) ![License](https://img.shields.io/badge/license-MIT-emerald) ![Local-First](https://img.shields.io/badge/100%25-Local--First-sky) ![Bilingual](https://img.shields.io/badge/UI-EN%20%7C%20%E4%B8%AD%E6%96%87-violet)
 
 [English](README.md) · [简体中文](README_ZH.md)
 

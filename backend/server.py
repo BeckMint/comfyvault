@@ -1086,9 +1086,11 @@ class VaultApp:
         import uuid
         from .config import DATA_DIR
         from .prompt_converter import (
+            COVERAGE_POLICIES,
             build_conversion_instruction,
             convert_via_local_qwenvl_sync,
             convert_via_web_llm_sync,
+            split_coverage_header,
         )
 
         body: Dict[str, Any] = {}
@@ -1198,10 +1200,15 @@ class VaultApp:
                 )
             if not converted_part:
                 return web.json_response({"error": "未返回有效内容，请重试或检查模型状态"}, status=500)
+
+            coverage_level, clean_converted = split_coverage_header(converted_part)
+            cov_policy = COVERAGE_POLICIES.get(coverage_level or "") or {}
+            negative_guard = cov_policy.get("negative_guard") or ""
+
             if has_divider and fixed_prefix:
-                final_prompt = fixed_prefix.rstrip() + "\n\n" + converted_part.strip()
+                final_prompt = fixed_prefix.rstrip() + "\n\n" + clean_converted.strip()
             else:
-                final_prompt = converted_part.strip()
+                final_prompt = clean_converted.strip()
 
             return web.json_response(
                 {
@@ -1210,13 +1217,17 @@ class VaultApp:
                     "model_family": detected_family,
                     "has_divider": has_divider,
                     "fixed_prefix": fixed_prefix,
-                    "converted_part": converted_part.strip(),
+                    "converted_part": clean_converted.strip(),
                     "final_prompt": final_prompt,
                     "workflow_path": workflow_path,
                     "target_node_id": target_node_id,
                     "target_input_key": target_input_key,
                     "reference_image": saved_ref_image_name,
                     "reference_image_url": f"/api/ref-images/{saved_ref_image_name}" if saved_ref_image_name else None,
+                    "coverage_level": coverage_level,
+                    "coverage_label_zh": cov_policy.get("label_zh"),
+                    "coverage_label_en": cov_policy.get("label_en"),
+                    "negative_guard": negative_guard,
                 }
             )
         except Exception as e:

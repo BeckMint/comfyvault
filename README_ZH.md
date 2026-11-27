@@ -1,10 +1,10 @@
 <div align="center">
 
-# ComfyVault `v0.1.60`
+# ComfyVault `v0.1.61`
 
 **面向 ComfyUI 的一站式本地创作工作台：虚拟滚动资产库 · 三引擎 AI 看图反推与写词 · 多参考图宫格对比 · 可视化工作流启动台 · 实时显存/内存异常告警**
 
-![Version](https://img.shields.io/badge/version-0.1.60-indigo) ![License](https://img.shields.io/badge/license-MIT-emerald) ![Local-First](https://img.shields.io/badge/100%25-%E6%9C%AC%E5%9C%B0%E8%BF%90%E8%A1%8C-sky) ![Bilingual](https://img.shields.io/badge/%E7%95%8C%E9%9D%A2-%E4%B8%AD%E6%96%87%20%7C%20EN-violet)
+![Version](https://img.shields.io/badge/version-0.1.61-indigo) ![License](https://img.shields.io/badge/license-MIT-emerald) ![Local-First](https://img.shields.io/badge/100%25-%E6%9C%AC%E5%9C%B0%E8%BF%90%E8%A1%8C-sky) ![Bilingual](https://img.shields.io/badge/%E7%95%8C%E9%9D%A2-%E4%B8%AD%E6%96%87%20%7C%20EN-violet)
 
 [English](README.md) · [简体中文](README_ZH.md)
 

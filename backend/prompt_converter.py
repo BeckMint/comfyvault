@@ -166,7 +166,15 @@ def build_conversion_instruction(
             "2. MANDATORY WARDROBE LOCK (CRITICAL — NEVER OMIT CLOTHING): You MUST explicitly describe EVERY garment actually worn in the photo — BOTH upper garment (exact type, color, pattern, straps, e.g. yellow-and-white striped triangle bikini top, white sheer lace cardigan slipped off her arms) AND lower garment (e.g. matching side-tie bikini bottoms, skirt, shorts) if visible! NEVER omit a visible top or bottom garment — omitting clothing causes character LoRAs to render unintended nudity!\n"
             "3. VIEWER-FRAME LEFT/RIGHT (NEVER MIRROR): anchor EVERY arm, hand, leg, head tilt, and prop to SCREEN coordinates ('on the left/right side of the frame') rather than only 'her left/right'. Describe any large blurred foreground limb/object if present.\n"
             "4. POSE, EXPRESSION, LIGHTING & SCENE: exact limb/leg positions and what each hand touches/holds; exact mouth/eye expression (never write negative filler like 'tongue not visible'); exposure key (bright high-key direct sun vs low-key), light direction, cast shadows; hairstyle/highlights and exact background architecture/plants/sky.\n"
-            f"Refer to the subject neutrally ('the woman'/'she'). Output ONLY the prompt wrapped between {start_marker} and {end_marker}."
+            f"Refer to the subject neutrally ('the woman'/'she').\n"
+            "EXPOSURE / COVERAGE ASSESSMENT (MANDATORY FIRST LINE INSIDE MARKERS):\n"
+            "Before the prompt, output ONE exact classification line judging the reference photo's actual nudity/coverage:\n"
+            "  COVERAGE: CLOTHED   (regular opaque clothes/uniform/dress, zero nudity)\n"
+            "  COVERAGE: SWIMWEAR_LINGERIE   (bikini/swimsuit/lingerie covering chest & groin, NO exposed nipples or genitals)\n"
+            "  COVERAGE: PARTIAL_EXPOSURE   (topless / exposed chest / sheer nipples OR bare lower body, NOT fully nude)\n"
+            "  COVERAGE: FULL_NUDE   (fully nude reference photo)\n"
+            "Your prompt MUST strictly obey the coverage level you classified (never make CLOTHED or SWIMWEAR_LINGERIE nude, and never escalate PARTIAL_EXPOSURE into FULL_NUDE).\n"
+            f"Output ONLY the COVERAGE line followed by the prompt wrapped between {start_marker} and {end_marker}."
             f"{extra}"
         )
 
@@ -250,10 +258,64 @@ def build_conversion_instruction(
         "OUTPUT FORMAT RULES:\n"
         "- Treat this request independently from any earlier messages or images in this conversation.\n"
         "- Do NOT generate or return any image — output TEXT ONLY.\n"
-        f"- Output ONLY the converted prompt text wrapped strictly between {start_marker} and {end_marker}.\n"
+        + (
+            "- MANDATORY EXPOSURE / COVERAGE LINE: On the VERY FIRST LINE inside the markers, output ONE exact line classifying the reference image's actual nudity/coverage level:\n"
+            "  COVERAGE: CLOTHED   (regular opaque clothes/uniform/dress, zero nudity)\n"
+            "  COVERAGE: SWIMWEAR_LINGERIE   (bikini/swimsuit/lingerie securely covering chest & groin, NO exposed nipples or genitals)\n"
+            "  COVERAGE: PARTIAL_EXPOSURE   (topless / exposed chest / sheer nipples OR bare lower body, NOT fully nude)\n"
+            "  COVERAGE: FULL_NUDE   (fully nude reference photo)\n"
+            "  Then write the prompt strictly obeying that exact exposure level (never make CLOTHED or SWIMWEAR_LINGERIE nude, never escalate PARTIAL_EXPOSURE to FULL_NUDE).\n"
+            if has_image
+            else ""
+        )
+        + f"- Output ONLY the converted prompt text wrapped strictly between {start_marker} and {end_marker}.\n"
         "- Do NOT include explanations, markdown headings, bullet lists, or extra commentary outside the markers.\n\n"
         f"{task_block}"
     )
+
+
+COVERAGE_POLICIES: Dict[str, Dict[str, str]] = {
+    "CLOTHED": {
+        "label_zh": "正常穿着（无裸露）",
+        "label_en": "Fully Clothed (No Nudity)",
+        "negative_guard": "(nude, naked, topless, bare breasts, exposed nipples, areola, exposed genitals, underwear, bikini, see-through clothing, wardrobe malfunction:1.45)",
+    },
+    "SWIMWEAR_LINGERIE": {
+        "label_zh": "泳装/内衣（无露点）",
+        "label_en": "Swimwear / Lingerie (No Nudity)",
+        "negative_guard": "(nude, naked, topless, bare breasts, exposed nipples, nipple bleed-through, areola, exposed genitals, wardrobe malfunction:1.45)",
+    },
+    "PARTIAL_EXPOSURE": {
+        "label_zh": "局部裸露（按原图还原）",
+        "label_en": "Partial Exposure (Match Reference)",
+        "negative_guard": "",
+    },
+    "FULL_NUDE": {
+        "label_zh": "全裸（按原图还原）",
+        "label_en": "Full Nude (Match Reference)",
+        "negative_guard": "",
+    },
+}
+
+
+def split_coverage_header(prompt_text: str) -> Tuple[Optional[str], str]:
+    """Extract optional leading 'COVERAGE: <LEVEL>' line and return (level, clean_prompt)."""
+    if not prompt_text:
+        return None, ""
+    lines = prompt_text.strip().splitlines()
+    if not lines:
+        return None, ""
+    m = re.match(
+        r"^\s*(?:\*{0,2})?COVERAGE(?:\*{0,2})?\s*[:：]\s*([A-Z_]+)\b",
+        lines[0].strip(),
+        re.IGNORECASE,
+    )
+    if m:
+        lvl = m.group(1).upper()
+        if lvl in COVERAGE_POLICIES:
+            rest = "\n".join(lines[1:]).lstrip("\r\n ")
+            return lvl, rest
+    return None, prompt_text.strip()
 
 
 def _clean_prompt_artifacts(text: str) -> str:

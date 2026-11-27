@@ -167,6 +167,59 @@ function autoAdjustWorkflowAspectRatio(
   return null;
 }
 
+function autoInjectNegativeGuard(
+  promptJson: Record<string, ComfyNodeData>,
+  uiTitles: Record<string, string>,
+  guardText: string,
+  positiveNodeId?: string
+): string | null {
+  const guard = (guardText || "").trim();
+  if (!guard) return null;
+
+  // 1. Find node explicitly titled negative / 负向 / 反向 / 负面
+  for (const nid of Object.keys(promptJson)) {
+    if (nid === positiveNodeId) continue;
+    const node = promptJson[nid];
+    if (!node?.inputs) continue;
+    const title = String(uiTitles[nid] || node._meta?.title || "").toLowerCase();
+    const isNegTitle =
+      title.includes("neg") || title.includes("负向") || title.includes("反向") || title.includes("负面");
+    if (!isNegTitle) continue;
+    const k = Object.keys(node.inputs).find(
+      (ik) => MULTILINE_KEYS.has(ik.toLowerCase()) && typeof node.inputs[ik] === "string"
+    );
+    if (k) {
+      const cur = String(node.inputs[k] || "").trim();
+      if (!cur.toLowerCase().includes("exposed nipples")) {
+        promptJson[nid] = {
+          ...node,
+          inputs: { ...node.inputs, [k]: cur ? `${guard}, ${cur}` : guard },
+        };
+      }
+      return `#${nid}`;
+    }
+  }
+
+  // 2. Fallback: find a node with a string input named "negative" or "negative_prompt"
+  for (const nid of Object.keys(promptJson)) {
+    const node = promptJson[nid];
+    if (!node?.inputs) continue;
+    for (const k of ["negative", "negative_prompt"]) {
+      if (typeof node.inputs[k] === "string") {
+        const cur = String(node.inputs[k] || "").trim();
+        if (!cur.toLowerCase().includes("exposed nipples")) {
+          promptJson[nid] = {
+            ...node,
+            inputs: { ...node.inputs, [k]: cur ? `${guard}, ${cur}` : guard },
+          };
+        }
+        return `#${nid}`;
+      }
+    }
+  }
+  return null;
+}
+
 export const WorkflowCreateModal: React.FC<Props> = ({
   comfyStatus,
   initialPrefill,
@@ -331,14 +384,31 @@ export const WorkflowCreateModal: React.FC<Props> = ({
             prefill.imageHeight
           );
         }
-        if (applied || ratioSummary) {
+        let negGuardNode: string | null = null;
+        if (prefill.negativeGuard) {
+          negGuardNode = autoInjectNegativeGuard(
+            nextPrompt,
+            res.ui_titles || {},
+            prefill.negativeGuard,
+            prefill.nodeId
+          );
+        }
+        if (applied || ratioSummary || negGuardNode) {
           onSubmitted(
             t(
               `已自动填入转换后的提示词${prefill.nodeId ? `（节点 #${prefill.nodeId}）` : ""}${
-                ratioSummary ? `，并按参考图比例自动调整 ${ratioSummary}` : ""
+                ratioSummary ? `，匹配画幅 ${ratioSummary}` : ""
+              }${
+                prefill.coverageLabel
+                  ? `，裸露判定「${prefill.coverageLabel}」${negGuardNode ? `并已注入负向保护 ${negGuardNode}` : ""}`
+                  : ""
               }，请检阅后点击创建`,
               `Auto-filled converted prompt${prefill.nodeId ? ` (Node #${prefill.nodeId})` : ""}${
-                ratioSummary ? ` & matched ratio ${ratioSummary}` : ""
+                ratioSummary ? `, matched ratio ${ratioSummary}` : ""
+              }${
+                prefill.coverageLabel
+                  ? `, exposure: ${prefill.coverageLabel}${negGuardNode ? ` (guard injected ${negGuardNode})` : ""}`
+                  : ""
               }. Please review and click Generate.`
             )
           );

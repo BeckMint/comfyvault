@@ -302,6 +302,10 @@ export const api = {
       target_input_key: string;
       reference_image?: string | null;
       reference_image_url?: string | null;
+      coverage_level?: "CLOTHED" | "SWIMWEAR_LINGERIE" | "PARTIAL_EXPOSURE" | "FULL_NUDE" | null;
+      coverage_label_zh?: string | null;
+      coverage_label_en?: string | null;
+      negative_guard?: string | null;
     };
     if (payload.image) {
       const fd = new FormData();

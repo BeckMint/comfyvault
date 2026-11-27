@@ -32,6 +32,9 @@ export interface WorkflowPrefillPayload {
   imageWidth?: number;
   imageHeight?: number;
   referenceImageName?: string;
+  coverageLevel?: string | null;
+  coverageLabel?: string | null;
+  negativeGuard?: string | null;
 }
 
 interface PromptNodeInfo {
@@ -197,6 +200,10 @@ export const PromptConverterModal: React.FC<Props> = ({
     model_family: string;
     reference_image?: string | null;
     reference_image_url?: string | null;
+    coverage_level?: string | null;
+    coverage_label_zh?: string | null;
+    coverage_label_en?: string | null;
+    negative_guard?: string | null;
   } | null>(null);
 
   const pollStatus = () => {
@@ -390,6 +397,9 @@ export const PromptConverterModal: React.FC<Props> = ({
           imageWidth: referenceDims?.width,
           imageHeight: referenceDims?.height,
           referenceImageName: res.reference_image || undefined,
+          coverageLevel: res.coverage_level || undefined,
+          coverageLabel: t(res.coverage_label_zh || "", res.coverage_label_en || "") || undefined,
+          negativeGuard: res.negative_guard || undefined,
         });
       } else {
         onToast(
@@ -1005,15 +1015,30 @@ export const PromptConverterModal: React.FC<Props> = ({
             {/* Result preview (if user chose preview mode) */}
             {result && (
               <div className="flex-1 min-h-[180px] flex flex-col p-3.5 rounded-xl bg-[#131826] border border-emerald-500/40 gap-2.5">
-                <div className="flex items-center justify-between gap-2 shrink-0">
-                  <span className="text-xs font-semibold text-emerald-300 flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5" />
-                    {t("转换结果预览（", "Conversion Result Preview (")}
-                    {result.has_divider
-                      ? t("已自动拼接在 ------ 下方", "auto-appended below ------")
-                      : t("完整提示词", "full prompt")}
-                    {t("）", ")")}
-                  </span>
+                <div className="flex flex-wrap items-center justify-between gap-2 shrink-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-semibold text-emerald-300 flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5" />
+                      {t("转换结果预览（", "Conversion Result Preview (")}
+                      {result.has_divider
+                        ? t("已自动拼接在 ------ 下方", "auto-appended below ------")
+                        : t("完整提示词", "full prompt")}
+                      {t("）", ")")}
+                    </span>
+                    {result.coverage_level && (
+                      <span
+                        className={`px-2 py-0.5 rounded-md text-[10px] font-semibold border ${
+                          result.negative_guard
+                            ? "bg-sky-500/15 border-sky-400/40 text-sky-200"
+                            : "bg-amber-500/15 border-amber-400/40 text-amber-200"
+                        }`}
+                      >
+                        {t("裸露判定：", "Exposure: ")}
+                        {t(result.coverage_label_zh || result.coverage_level, result.coverage_label_en || result.coverage_level)}
+                        {result.negative_guard ? t(" · 自动注入防裸露负向", " · Auto Negative Guard") : ""}
+                      </span>
+                    )}
+                  </div>
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
@@ -1033,6 +1058,9 @@ export const PromptConverterModal: React.FC<Props> = ({
                           imageWidth: referenceDims?.width,
                           imageHeight: referenceDims?.height,
                           referenceImageName: result.reference_image || undefined,
+                          coverageLevel: result.coverage_level || undefined,
+                          coverageLabel: t(result.coverage_label_zh || "", result.coverage_label_en || "") || undefined,
+                          negativeGuard: result.negative_guard || undefined,
                         })
                       }
                       className="px-3 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-[11px] font-semibold text-white flex items-center gap-1"
