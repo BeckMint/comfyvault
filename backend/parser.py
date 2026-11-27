@@ -122,7 +122,9 @@ def extract_media_info_and_metadata(file_path: Path) -> Dict[str, Any]:
         except Exception:
             pass
     elif ext in VIDEO_EXTS:
-        _extract_video_ffprobe(file_path, result)
+        _extract_video_pyav(file_path, result)
+        if result["width"] == 0 or (not result["prompt_json"] and not result["workflow_json"]):
+            _extract_video_ffprobe(file_path, result)
 
     # Optional sidecar .json fallback
     if not result["prompt_json"]:
@@ -141,6 +143,65 @@ def extract_media_info_and_metadata(file_path: Path) -> Dict[str, Any]:
                 pass
 
     return result
+
+
+def _parse_video_tags(tags: Dict[str, Any], result: Dict[str, Any]) -> None:
+    for k, v in (tags or {}).items():
+        if not isinstance(v, str) or not v.strip():
+            continue
+        kl = str(k).strip().lower()
+        parsed = _safe_json_loads(v)
+        if not isinstance(parsed, dict):
+            continue
+        if kl == "prompt" and not result["prompt_json"]:
+            result["prompt_json"] = parsed
+            continue
+        if kl == "workflow" and not result["workflow_json"]:
+            result["workflow_json"] = parsed
+            continue
+        if "prompt" in parsed and not result["prompt_json"]:
+            p = _safe_json_loads(parsed["prompt"]) if isinstance(parsed["prompt"], str) else parsed["prompt"]
+            if isinstance(p, dict):
+                result["prompt_json"] = p
+        if "workflow" in parsed and not result["workflow_json"]:
+            w = _safe_json_loads(parsed["workflow"]) if isinstance(parsed["workflow"], str) else parsed["workflow"]
+            if isinstance(w, dict):
+                result["workflow_json"] = w
+        if not result["prompt_json"] and any(
+            isinstance(nv, dict) and "class_type" in nv for nv in parsed.values()
+        ):
+            result["prompt_json"] = parsed
+        elif not result["workflow_json"] and "nodes" in parsed:
+            result["workflow_json"] = parsed
+
+
+def _extract_video_pyav(file_path: Path, result: Dict[str, Any]) -> None:
+    try:
+        import av  # type: ignore
+
+        with av.open(str(file_path)) as container:
+            vstreams = [s for s in container.streams if s.type == "video"]
+            if vstreams:
+                st = vstreams[0]
+                if st.width and st.height:
+                    result["width"] = int(st.width)
+                    result["height"] = int(st.height)
+                rate = st.average_rate or st.guessed_rate
+                if rate:
+                    try:
+                        fps = float(rate)
+                        if fps > 0:
+                            result["fps"] = round(fps, 2)
+                    except Exception:
+                        pass
+            if container.duration:
+                try:
+                    result["duration"] = round(float(container.duration) / 1_000_000.0, 2)
+                except Exception:
+                    pass
+            _parse_video_tags(dict(container.metadata or {}), result)
+    except Exception:
+        pass
 
 
 def _extract_video_ffprobe(file_path: Path, result: Dict[str, Any]) -> None:
@@ -192,25 +253,7 @@ def _extract_video_ffprobe(file_path: Path, result: Dict[str, Any]) -> None:
                 pass
 
         tags = fmt.get("tags") or {}
-        for k, v in tags.items():
-            if not isinstance(v, str):
-                continue
-            parsed = _safe_json_loads(v)
-            if isinstance(parsed, dict):
-                if "prompt" in parsed:
-                    p = _safe_json_loads(parsed["prompt"]) if isinstance(parsed["prompt"], str) else parsed["prompt"]
-                    if isinstance(p, dict):
-                        result["prompt_json"] = p
-                if "workflow" in parsed:
-                    w = _safe_json_loads(parsed["workflow"]) if isinstance(parsed["workflow"], str) else parsed["workflow"]
-                    if isinstance(w, dict):
-                        result["workflow_json"] = w
-                if not result["prompt_json"] and any(
-                    isinstance(nv, dict) and "class_type" in nv for nv in parsed.values()
-                ):
-                    result["prompt_json"] = parsed
-                elif not result["workflow_json"] and "nodes" in parsed:
-                    result["workflow_json"] = parsed
+        _parse_video_tags(tags, result)
     except Exception:
         pass
 

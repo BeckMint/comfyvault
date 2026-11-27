@@ -113,7 +113,14 @@ class ComfyBridge:
         self._monitor_task: Optional[asyncio.Task] = None
         self._stopped = False
         self.scanner.set_comfy_executing_check(
-            lambda: bool(self.state.get("online") and self.state.get("executing_prompt_id"))
+            lambda: bool(
+                self.state.get("online")
+                and (
+                    self.state.get("executing_prompt_id")
+                    or self.state.get("executing_node")
+                    or (self.state.get("queue_remaining") or 0) > 0
+                )
+            )
         )
 
     def _emit(self, event_type: str, payload: Dict[str, Any]) -> None:

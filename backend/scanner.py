@@ -199,7 +199,7 @@ class AssetScanner:
             return False
 
     def _is_media_file_complete(self, path: Path) -> bool:
-        """Verify file is non-empty, unlocked, and (for images) decodable rather than half-written."""
+        """Verify file is non-empty, unlocked, and decodable (images & videos) rather than half-written."""
         try:
             st = path.stat()
             if st.st_size <= 0:
@@ -214,6 +214,19 @@ class AssetScanner:
                         return False
                     # Force full header/frame decode check to reject truncated/in-progress WebP/PNG writes
                     im.verify()
+            elif ext in (".mp4", ".webm", ".mov", ".mkv", ".avi"):
+                # Reject tiny header-only files (e.g. 48-byte ftyp stub while SaveVideo is still muxing)
+                if st.st_size < 1024:
+                    return False
+                try:
+                    import av  # type: ignore
+
+                    with av.open(str(path)) as container:
+                        vstreams = [s for s in container.streams if s.type == "video"]
+                        if not vstreams or not vstreams[0].width or not vstreams[0].height:
+                            return False
+                except ImportError:
+                    pass
             return True
         except Exception:
             return False
