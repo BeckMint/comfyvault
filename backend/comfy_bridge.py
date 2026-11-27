@@ -1,6 +1,8 @@
 import asyncio
 import copy
+import ctypes
 import json
+import os
 import random
 import time
 import uuid
@@ -12,6 +14,64 @@ import aiohttp
 from .config import COMFY_HTTP_URL, COMFY_WS_URL, OUTPUT_DIR, detect_comfy_version
 from .db import VaultDB
 from .scanner import AssetScanner
+
+
+class _MEMORYSTATUSEX(ctypes.Structure):
+    _fields_ = [
+        ("dwLength", ctypes.c_ulong),
+        ("dwMemoryLoad", ctypes.c_ulong),
+        ("ullTotalPhys", ctypes.c_ulonglong),
+        ("ullAvailPhys", ctypes.c_ulonglong),
+        ("ullTotalPageFile", ctypes.c_ulonglong),
+        ("ullAvailPageFile", ctypes.c_ulonglong),
+        ("ullTotalVirtual", ctypes.c_ulonglong),
+        ("ullAvailVirtual", ctypes.c_ulonglong),
+        ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+    ]
+
+
+def _read_system_memory() -> Dict[str, Any]:
+    if os.name == "nt":
+        try:
+            st = _MEMORYSTATUSEX()
+            st.dwLength = ctypes.sizeof(_MEMORYSTATUSEX)
+            if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(st)):
+                gb = 1073741824.0
+                total_phys = st.ullTotalPhys / gb
+                avail_phys = st.ullAvailPhys / gb
+                used_phys = max(0.0, total_phys - avail_phys)
+                total_pf = st.ullTotalPageFile / gb
+                avail_pf = st.ullAvailPageFile / gb
+                used_pf = max(0.0, total_pf - avail_pf)
+                commit_pct = int(round((used_pf / total_pf) * 100)) if total_pf > 0 else 0
+                return {
+                    "ram_total_gb": round(total_phys, 1),
+                    "ram_used_gb": round(used_phys, 1),
+                    "ram_free_gb": round(avail_phys, 1),
+                    "ram_pct": int(st.dwMemoryLoad),
+                    "commit_total_gb": round(total_pf, 1),
+                    "commit_used_gb": round(used_pf, 1),
+                    "commit_pct": commit_pct,
+                }
+        except Exception:
+            pass
+    return {}
+
+
+def _fmt_duration_zh(sec: float) -> str:
+    s = max(0, int(round(sec)))
+    if s >= 60:
+        m, r = divmod(s, 60)
+        return f"{m} 分 {r} 秒" if r else f"{m} 分钟"
+    return f"{s} 秒"
+
+
+def _fmt_duration_en(sec: float) -> str:
+    s = max(0, int(round(sec)))
+    if s >= 60:
+        m, r = divmod(s, 60)
+        return f"{m}m {r}s" if r else f"{m}m"
+    return f"{s}s"
 
 
 class ComfyBridge:
@@ -38,12 +98,19 @@ class ComfyBridge:
             "started_at": None,
             "progress_value": 0,
             "progress_max": 0,
+            "resources": None,
+            "alert": None,
         }
         self._start_times: Dict[str, float] = {}
         self._prompt_node_titles: Dict[str, Dict[str, str]] = {}
         self._lineage_map: Dict[str, int] = {}
         self._ref_image_map: Dict[str, str] = {}
+        self._node_started_at: Optional[float] = None
+        self._last_step_at: Optional[float] = None
+        self._last_step_value: int = 0
+        self._last_step_duration: float = 0.0
         self._task: Optional[asyncio.Task] = None
+        self._monitor_task: Optional[asyncio.Task] = None
         self._stopped = False
         self.scanner.set_comfy_executing_check(
             lambda: bool(self.state.get("online") and self.state.get("executing_prompt_id"))
@@ -59,15 +126,183 @@ class ComfyBridge:
     def start(self) -> None:
         self._stopped = False
         self._task = asyncio.create_task(self._ws_loop())
+        self._monitor_task = asyncio.create_task(self._monitor_loop())
 
     async def stop(self) -> None:
         self._stopped = True
-        if self._task:
-            self._task.cancel()
+        for t in (self._task, self._monitor_task):
+            if t:
+                t.cancel()
+                try:
+                    await t
+                except Exception:
+                    pass
+
+    def _reset_exec_trackers(self) -> None:
+        self._node_started_at = None
+        self._last_step_at = None
+        self._last_step_value = 0
+        self._last_step_duration = 0.0
+        self.state["alert"] = None
+
+    def _evaluate_alert(self, res: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        is_executing = bool(self.state.get("online") and (self.state.get("executing_prompt_id") or self.state.get("executing_node")))
+        if not is_executing:
+            return None
+
+        now = time.time()
+        ram_pct = int(res.get("ram_pct") or 0)
+        ram_used = float(res.get("ram_used_gb") or 0)
+        ram_total = float(res.get("ram_total_gb") or 0)
+        ram_free = float(res.get("ram_free_gb") or 99)
+        commit_pct = int(res.get("commit_pct") or 0)
+        commit_used = float(res.get("commit_used_gb") or 0)
+        commit_total = float(res.get("commit_total_gb") or 0)
+        vram_pct = int(res.get("vram_pct") or 0)
+        vram_used = float(res.get("vram_used_gb") or 0)
+        vram_total = float(res.get("vram_total_gb") or 0)
+
+        pmax = int(self.state.get("progress_max") or 0)
+        node_title = str(self.state.get("executing_node_title") or self.state.get("executing_node") or "当前节点")
+        step_elapsed = (now - self._last_step_at) if self._last_step_at else ((now - self._node_started_at) if self._node_started_at else 0.0)
+        node_elapsed = (now - self._node_started_at) if self._node_started_at else 0.0
+        worst_step = max(step_elapsed, self._last_step_duration)
+
+        # --- DANGER LEVEL ---
+        if ram_pct >= 92 or (ram_total > 0 and ram_free <= 1.8):
+            return {
+                "level": "danger",
+                "code": "ram_critical",
+                "title_zh": "内存严重告急",
+                "title_en": "Critical RAM Pressure",
+                "message_zh": f"系统内存占用已达 {ram_pct}%（{ram_used}/{ram_total} GB，仅剩 {ram_free} GB），正在重度磁盘换页，继续运行可能导致卡死或推理极慢。",
+                "message_en": f"System RAM at {ram_pct}% ({ram_used}/{ram_total} GB, {ram_free} GB free). Heavy paging may stall or freeze the system.",
+            }
+        if vram_pct >= 96 and ram_pct >= 85:
+            return {
+                "level": "danger",
+                "code": "vram_ram_critical",
+                "title_zh": "显存与内存双重满载",
+                "title_en": "VRAM + RAM Saturated",
+                "message_zh": f"显存 {vram_pct}%（{vram_used}/{vram_total} GB）且内存 {ram_pct}%（{ram_used}/{ram_total} GB），正在高频 Offload 换页，极易 OOM 或拖慢至小时级。",
+                "message_en": f"VRAM {vram_pct}% ({vram_used}/{vram_total} GB) & RAM {ram_pct}% ({ram_used}/{ram_total} GB). Heavy offload may cause OOM or extreme slowdown.",
+            }
+        if commit_pct >= 92 and commit_total > 0:
+            return {
+                "level": "danger",
+                "code": "commit_critical",
+                "title_zh": "虚拟内存提交告急",
+                "title_en": "Virtual Memory Critical",
+                "message_zh": f"系统提交内存已达 {commit_pct}%（{commit_used}/{commit_total} GB），继续执行可能触发内存溢出崩溃。",
+                "message_en": f"System commit charge at {commit_pct}% ({commit_used}/{commit_total} GB). Risk of out-of-memory crash.",
+            }
+        if pmax > 0 and worst_step >= 180:
+            return {
+                "level": "danger",
+                "code": "step_stall",
+                "title_zh": "采样单步异常缓慢",
+                "title_en": "Sampling Step Stalled",
+                "message_zh": f"当前采样单步耗时已达 {_fmt_duration_zh(worst_step)}（显存 {vram_pct}% / 内存 {ram_pct}%），疑似触发高频显存-内存换页或参数过重。",
+                "message_en": f"Current sampling step has taken {_fmt_duration_en(worst_step)} (VRAM {vram_pct}% / RAM {ram_pct}%). Possible heavy offload or stall.",
+            }
+        if pmax == 0 and node_elapsed >= 300 and (ram_pct >= 85 or vram_pct >= 94):
+            return {
+                "level": "danger",
+                "code": "node_stall",
+                "title_zh": "节点长时间无响应",
+                "title_en": "Node Unresponsive",
+                "message_zh": f"节点「{node_title}」已持续 {_fmt_duration_zh(node_elapsed)} 无进度且资源吃紧（显存 {vram_pct}% / 内存 {ram_pct}%），建议终止检查。",
+                "message_en": f"Node '{node_title}' has run for {_fmt_duration_en(node_elapsed)} with high resource pressure (VRAM {vram_pct}% / RAM {ram_pct}%).",
+            }
+
+        # --- WARN LEVEL ---
+        if ram_pct >= 85:
+            return {
+                "level": "warn",
+                "code": "ram_high",
+                "title_zh": "内存占用偏高",
+                "title_en": "High RAM Usage",
+                "message_zh": f"系统内存已占用 {ram_pct}%（{ram_used}/{ram_total} GB，剩余 {ram_free} GB），接近上限，请注意观察是否继续上涨。",
+                "message_en": f"System RAM at {ram_pct}% ({ram_used}/{ram_total} GB, {ram_free} GB free). Monitor closely.",
+            }
+        if vram_pct >= 94 and vram_total > 0:
+            return {
+                "level": "warn",
+                "code": "vram_high",
+                "title_zh": "显存接近上限",
+                "title_en": "VRAM Near Limit",
+                "message_zh": f"显存占用 {vram_pct}%（{vram_used}/{vram_total} GB），可能触发频繁 Offload 导致生成明显变慢。",
+                "message_en": f"VRAM at {vram_pct}% ({vram_used}/{vram_total} GB). Frequent offloading may slow generation.",
+            }
+        if pmax > 0 and worst_step >= 90:
+            return {
+                "level": "warn",
+                "code": "step_slow",
+                "title_zh": "单步耗时偏长",
+                "title_en": "Slow Sampling Step",
+                "message_zh": f"当前采样单步已耗时 {_fmt_duration_zh(worst_step)}（显存 {vram_pct}% / 内存 {ram_pct}%），如非预期大模型可考虑终止任务。",
+                "message_en": f"Sampling step has taken {_fmt_duration_en(worst_step)} (VRAM {vram_pct}% / RAM {ram_pct}%).",
+            }
+        return None
+
+    async def _monitor_loop(self) -> None:
+        while not self._stopped:
+            is_busy = bool(
+                self.state.get("online")
+                and (
+                    self.state.get("executing_prompt_id")
+                    or self.state.get("executing_node")
+                    or (self.state.get("queue_remaining") or 0) > 0
+                )
+            )
+            interval = 2.5 if is_busy else 8.0
             try:
-                await self._task
+                if self.state.get("online"):
+                    mem = _read_system_memory()
+                    vram_info: Dict[str, Any] = {}
+                    try:
+                        async with aiohttp.ClientSession() as session:
+                            async with session.get(
+                                f"{COMFY_HTTP_URL}/system_stats", timeout=aiohttp.ClientTimeout(total=2.5)
+                            ) as resp:
+                                if resp.status == 200:
+                                    data = await resp.json()
+                                    devs = data.get("devices") or []
+                                    if devs and isinstance(devs[0], dict):
+                                        d0 = devs[0]
+                                        vt = float(d0.get("vram_total") or 0)
+                                        vf = float(d0.get("vram_free") or 0)
+                                        if vt > 0:
+                                            vu = max(0.0, vt - vf)
+                                            gb = 1073741824.0
+                                            vram_info = {
+                                                "vram_total_gb": round(vt / gb, 1),
+                                                "vram_used_gb": round(vu / gb, 1),
+                                                "vram_pct": int(round((vu / vt) * 100)),
+                                            }
+                    except Exception:
+                        pass
+
+                    now = time.time()
+                    step_sec = 0
+                    if is_busy:
+                        base_t = self._last_step_at or self._node_started_at
+                        if base_t:
+                            step_sec = max(0, int(round(now - base_t)))
+
+                    res = {**mem, **vram_info, "step_sec": step_sec}
+                    if res:
+                        self.state["resources"] = res
+                    new_alert = self._evaluate_alert(res)
+                    prev_alert = self.state.get("alert")
+                    self.state["alert"] = new_alert
+                    if is_busy or new_alert != prev_alert:
+                        self._emit("comfy_status", dict(self.state))
+            except asyncio.CancelledError:
+                break
             except Exception:
                 pass
+            await asyncio.sleep(interval)
 
     async def _refresh_system_stats(self, session: aiohttp.ClientSession) -> None:
         try:
@@ -110,6 +345,7 @@ class ComfyBridge:
                 self.state["executing_node"] = None
                 self.state["progress_value"] = 0
                 self.state["progress_max"] = 0
+                self._reset_exec_trackers()
                 self._emit("comfy_status", dict(self.state))
 
             await asyncio.sleep(3.0)
@@ -134,6 +370,8 @@ class ComfyBridge:
             if pid:
                 now = time.time()
                 self._start_times[pid] = now
+                self._reset_exec_trackers()
+                self._node_started_at = now
                 self.state["executing_prompt_id"] = pid
                 self.state["started_at"] = now
                 self.state["executing_node"] = None
@@ -151,12 +389,18 @@ class ComfyBridge:
                 self.state["started_at"] = None
                 self.state["progress_value"] = 0
                 self.state["progress_max"] = 0
+                self._reset_exec_trackers()
                 if pid:
                     self._prompt_node_titles.pop(pid, None)
                     asyncio.create_task(self._capture_history(pid))
             else:
+                now = time.time()
+                self._node_started_at = now
+                self._last_step_at = None
+                self._last_step_value = 0
+                self._last_step_duration = 0.0
                 if pid and not self.state.get("started_at"):
-                    self.state["started_at"] = self._start_times.get(pid, time.time())
+                    self.state["started_at"] = self._start_times.get(pid, now)
                 self.state["executing_prompt_id"] = pid
                 titles = self._prompt_node_titles.get(pid or "", {})
                 self.state["executing_node_title"] = titles.get(str(node)) or f"节点 #{node}"
@@ -164,7 +408,14 @@ class ComfyBridge:
                 self.state["progress_max"] = 0
             self._emit("comfy_status", dict(self.state))
         elif mtype == "progress":
-            self.state["progress_value"] = int(data.get("value", 0))
+            now = time.time()
+            val = int(data.get("value", 0))
+            if val != self._last_step_value:
+                if self._last_step_at is not None and val > self._last_step_value:
+                    self._last_step_duration = max(0.0, now - self._last_step_at)
+                self._last_step_at = now
+                self._last_step_value = val
+            self.state["progress_value"] = val
             self.state["progress_max"] = int(data.get("max", 0))
             if data.get("node"):
                 nid = str(data["node"])
@@ -179,15 +430,27 @@ class ComfyBridge:
             nodes = data.get("nodes") or {}
             pid = data.get("prompt_id") or self.state.get("executing_prompt_id") or ""
             titles = self._prompt_node_titles.get(pid, {})
+            now = time.time()
             for nid, info in nodes.items():
                 if isinstance(info, dict) and info.get("state") == "running":
+                    val = int(info.get("value", 0))
+                    if str(nid) != self.state.get("executing_node"):
+                        self._node_started_at = now
+                        self._last_step_at = now if val > 0 else None
+                        self._last_step_value = val
+                        self._last_step_duration = 0.0
+                    elif val != self._last_step_value:
+                        if self._last_step_at is not None and val > self._last_step_value:
+                            self._last_step_duration = max(0.0, now - self._last_step_at)
+                        self._last_step_at = now
+                        self._last_step_value = val
                     self.state["executing_prompt_id"] = pid or self.state.get("executing_prompt_id")
                     self.state["executing_node"] = str(nid)
                     self.state["executing_node_title"] = titles.get(str(nid)) or f"节点 #{nid}"
-                    self.state["progress_value"] = int(info.get("value", 0))
+                    self.state["progress_value"] = val
                     self.state["progress_max"] = int(info.get("max", 0))
                     if not self.state.get("started_at"):
-                        self.state["started_at"] = time.time()
+                        self.state["started_at"] = now
                     break
             self._emit("comfy_status", dict(self.state))
         elif mtype == "execution_success":
@@ -198,6 +461,7 @@ class ComfyBridge:
             self.state["started_at"] = None
             self.state["progress_value"] = 0
             self.state["progress_max"] = 0
+            self._reset_exec_trackers()
             self._emit("comfy_status", dict(self.state))
             if pid:
                 self._prompt_node_titles.pop(pid, None)
@@ -209,6 +473,7 @@ class ComfyBridge:
             self.state["started_at"] = None
             self.state["progress_value"] = 0
             self.state["progress_max"] = 0
+            self._reset_exec_trackers()
             self._emit("comfy_status", dict(self.state))
 
     async def _capture_history(self, prompt_id: str) -> None:

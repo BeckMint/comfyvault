@@ -118,6 +118,29 @@ export interface AssetDetail extends Omit<AssetListItem, "loras"> {
   children: Array<{ id: number; filename: string; media_type: string; created_at: number; rating: number; thumb_url: string }>;
 }
 
+export interface ComfyResourceStats {
+  ram_total_gb?: number;
+  ram_used_gb?: number;
+  ram_free_gb?: number;
+  ram_pct?: number;
+  commit_total_gb?: number;
+  commit_used_gb?: number;
+  commit_pct?: number;
+  vram_total_gb?: number;
+  vram_used_gb?: number;
+  vram_pct?: number;
+  step_sec?: number;
+}
+
+export interface ComfyExecutionAlert {
+  level: "warn" | "danger";
+  code: string;
+  title_zh: string;
+  title_en: string;
+  message_zh: string;
+  message_en: string;
+}
+
 export interface ComfyStatus {
   online: boolean;
   comfy_url: string;
@@ -129,6 +152,8 @@ export interface ComfyStatus {
   started_at?: number | null;
   progress_value: number;
   progress_max: number;
+  resources?: ComfyResourceStats | null;
+  alert?: ComfyExecutionAlert | null;
 }
 
 export interface ScanStatus {
