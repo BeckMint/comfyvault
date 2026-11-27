@@ -73,6 +73,21 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [detailRefreshTick, setDetailRefreshTick] = useState(0);
 
+  // Pause list & right-drawer preview videos whenever ANY modal opens
+  useEffect(() => {
+    if (
+      remixDetail ||
+      compareIds ||
+      refCompareItem ||
+      lightboxIndex !== null ||
+      showWorkflowCreate ||
+      showPromptConverter ||
+      showSettings
+    ) {
+      window.dispatchEvent(new CustomEvent("comfyvault:pause-bg-videos"));
+    }
+  }, [remixDetail, compareIds, refCompareItem, lightboxIndex, showWorkflowCreate, showPromptConverter, showSettings]);
+
   const [comfyStatus, setComfyStatus] = useState<ComfyStatus>({
     online: false,
     comfy_url: "http://127.0.0.1:8188",

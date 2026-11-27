@@ -954,7 +954,7 @@ export const LightboxModal: React.FC<Props> = ({ items, currentIndex, onChangeIn
           src={item.media_url}
           controls
           autoPlay
-          loop
+          playsInline
           className="max-w-[92vw] max-h-[86vh] rounded-lg shadow-2xl"
         />
       ) : (

@@ -18,6 +18,7 @@ export const CompareModal: React.FC<Props> = ({ assetIds, onClose }) => {
   const [splitPct, setSplitPct] = useState(50);
 
   useEffect(() => {
+    window.dispatchEvent(new CustomEvent("comfyvault:pause-bg-videos"));
     Promise.all([api.getAssetDetail(assetIds[0]), api.getAssetDetail(assetIds[1])]).then(([da, db]) => {
       setA(da);
       setB(db);
@@ -124,7 +125,7 @@ export const CompareModal: React.FC<Props> = ({ assetIds, onClose }) => {
                   </div>
                   <div className="h-[360px] flex items-center justify-center p-2">
                     {item.media_type === "video" ? (
-                      <video src={item.media_url} controls autoPlay loop muted className="max-h-full max-w-full" />
+                      <video src={item.media_url} controls autoPlay muted playsInline className="max-h-full max-w-full" />
                     ) : (
                       <img src={item.media_url} alt={item.filename} className="max-h-full max-w-full object-contain" />
                     )}

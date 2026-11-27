@@ -269,7 +269,6 @@ export const AssetDetailDrawer: React.FC<Props> = ({
                 key={detail.id}
                 src={detail.media_url}
                 controls
-                loop
                 playsInline
                 preload="metadata"
                 title={t("双击放大播放", "Double-click to enlarge")}
@@ -778,7 +777,6 @@ export const AssetDetailDrawer: React.FC<Props> = ({
               src={detail.media_url}
               controls
               autoPlay
-              loop
               playsInline
               onClick={(e) => e.stopPropagation()}
               className="max-w-[92vw] max-h-[88vh] rounded-xl shadow-2xl cursor-default"

@@ -131,8 +131,10 @@ const AssetCard = React.memo(function AssetCard({
           <video
             ref={videoRef}
             src={item.media_url}
-            loop
             playsInline
+            onEnded={() => {
+              if (isPlayingVideo) onTogglePlayVideo(item.id);
+            }}
             className="absolute inset-0 w-full h-full object-cover"
           />
         )}

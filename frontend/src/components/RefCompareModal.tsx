@@ -43,6 +43,10 @@ export const RefCompareModal: React.FC<Props> = ({ detail, onClose, onOpenRemix 
   }, [detail.id, refList.length]);
 
   useEffect(() => {
+    window.dispatchEvent(new CustomEvent("comfyvault:pause-bg-videos"));
+  }, [detail.id]);
+
+  useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
@@ -264,7 +268,6 @@ export const RefCompareModal: React.FC<Props> = ({ detail, onClose, onOpenRemix 
                     src={detail.media_url}
                     controls
                     autoPlay
-                    loop
                     playsInline
                     className="max-w-full max-h-full object-contain rounded-lg"
                   />
@@ -336,7 +339,6 @@ export const RefCompareModal: React.FC<Props> = ({ detail, onClose, onOpenRemix 
                     src={detail.media_url}
                     controls
                     autoPlay
-                    loop
                     playsInline
                     className="max-w-full max-h-full object-contain rounded-lg"
                   />
