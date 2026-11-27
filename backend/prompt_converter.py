@@ -166,9 +166,11 @@ def build_conversion_instruction(
             "- PROVE the camera angle with concrete visual foreshortening cues so the diffusion model actually renders it: for high-angle, state looking down onto the crown of her head, tops of shoulders, and downward past her torso/floor/furniture; for low-angle, state looking up toward the underside of her chin with looming lower body and ceiling/sky behind.\n"
             "- Exact subject scale (% of frame height, e.g. ~45% distant, ~65% medium, ~80% tight) and consistent crop boundaries (never mix 'wide' with 'cropped tightly').\n"
             "- Exact horizontal azimuth (frontal/3-4/profile/over-shoulder/rear) vs torso direction, head turn & eye gaze, plus foreground shoot-through occlusion if any.\n"
-            "THEN DESCRIBE ACCURATELY: exact hairstyle & bangs, exact clothing style/collar/footwear (never vague 'top'), "
-            "what each hand is doing or holding, pose/body action, expression/mood, "
-            "background environment/props, lighting direction/contrast, color grading, film/photo style & story.\n"
+            "THEN DESCRIBE WITH ANATOMICAL & VISUAL PRECISION (never use vague generic terms that character LoRAs override):\n"
+            "- POSE: exact arm/elbow/hand height & angles (e.g. arms raised high overhead exposing underarms, left arm stretching to top edge, torso leaning/arched diagonally, weight on one hip), plus what each hand holds.\n"
+            "- EXPRESSION: exact mouth state (parted open showing teeth / playful grin / closed lips / pout), eye state (crinkled laughing / sultry half-lidded / direct gaze), and exact head tilt angle.\n"
+            "- LIGHTING & CAST SHADOWS: exact exposure key (bright high-key direct sunlight vs moody low-key), light direction, backlit rim glow, and EXACT body/surface placement of any cast shadows (e.g. sharp floral-lace shadow pattern projected across bare stomach/navel, fine striped shadows across chest/shoulders).\n"
+            "- HAIR, WARDROBE & SCENE: exact hairstyle/bangs/highlights, exact clothing cut/material/footwear, background environment/props, color grading & film style.\n"
             f"Refer to the subject neutrally ('the woman'/'she'). Output ONLY the prompt wrapped between {start_marker} and {end_marker}."
             f"{extra}"
         )
@@ -222,7 +224,11 @@ def build_conversion_instruction(
             "   - If SIDE / 3/4 / REAR / OVER-THE-SHOULDER: explicitly state which side or back of the body faces the lens closest, torso direction, head turn angle, and exact eye-gaze direction.\n"
             "3. Subject-to-Frame Scale & Consistent Crop Boundaries (NO aspect ratio/orientation words): explicitly state what percentage of frame height the subject occupies (e.g., ~45% distant, ~65% medium, ~80% tight) and exact crop boundaries consistently (if feet are visible, state full-body with visible ground margin below feet; NEVER contradict 'wide' with 'cropped tightly') — NEVER mention aspect ratio, vertical/horizontal framing, or resolution (handled by workflow node).\n"
             "4. Foreground Occlusion, Depth Layering & Lens Perspective: describe any close-to-lens foreground shoot-through elements (e.g., heavy defocused lace/curtains/foliage/doorframe covering the top/sides of the frame), estimated focal length & working distance, depth of field, and horizon height or Dutch tilt.\n"
-            "5. Action, Pose, Hair, Wardrobe & Lighting: accurately describe what each hand is doing or holding, posture/expression, exact hairstyle & bangs, exact clothing style/cut/material/footwear, lighting direction, cast shadows, color grading, film texture & mood.\n"
+            "5. POSE, EXPRESSION & CAST-SHADOW LIGHTING FIDELITY (CRITICAL — LoRA-RESISTANT PRECISION):\n"
+            "   - POSE: NEVER use vague action summaries alone (like 'holding curtains'). Explicitly state exact limb elevation and body geometry relative to landmarks (e.g., 'both arms raised high overhead above her head with underarms visible', 'left upper arm reaching straight up past the top-right frame edge', 'torso leaning diagonally / arched', 'hips shifted to one side') so the model cannot collapse into a generic standing pose.\n"
+            "   - EXPRESSION: NEVER settle for generic 'gentle smile' or 'open smile' (character LoRAs default to closed-mouth neutral faces). Explicitly specify exact mouth/eye/head mechanics (e.g., 'mouth parted open in a cheeky grin showing upper teeth', 'slight tongue peek', 'head tilted sharply sideways toward her right shoulder', 'playful crinkled eyes looking straight into the lens').\n"
+            "   - LIGHTING & CAST SHADOWS: Explicitly state exposure key ('bright high-key direct midday sunlight' vs 'moody low-key'), light direction, backlit rim light, and the EXACT body/surface placement of any patterned shadows or highlights (e.g., 'crisp dark floral-lace shadow pattern projected directly across her bare stomach and navel, and fine parallel striped shadows across her chest and shoulders' — never vague 'shadows across the woman').\n"
+            "   - HAIR, WARDROBE & COLOR: Accurately describe exact hairstyle, bangs, color highlights, clothing cut/fabric/ties/footwear, color palette, film grain & mood.\n"
             "6. LoRA Character Preservation: NEVER describe the reference person's fixed facial bone structure/features or body proportions/bust/waist/hips, and NEVER mention watermarks, date stamps, logos, or @handles.\n"
         )
         task_block = (
