@@ -234,14 +234,16 @@ export const PromptConverterModal: React.FC<Props> = ({
     return () => window.clearInterval(timer);
   }, [converting, liveStatus.busy, liveStatus.login_open]);
 
-  const pinnedPaths = useMemo<Set<string>>(() => {
+  const pinnedOrder = useMemo<string[]>(() => {
     try {
       const raw = localStorage.getItem("comfyvault_pinned_workflows");
-      return new Set(raw ? JSON.parse(raw) : []);
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed.map(String) : [];
     } catch {
-      return new Set();
+      return [];
     }
   }, []);
+  const pinnedPaths = useMemo<Set<string>>(() => new Set(pinnedOrder), [pinnedOrder]);
 
   useEffect(() => {
     api
@@ -253,9 +255,12 @@ export const PromptConverterModal: React.FC<Props> = ({
       .listWorkflowFiles()
       .then((r) => {
         const sorted = [...(r.items || [])].sort((a, b) => {
-          const pa = pinnedPaths.has(a.path) ? 1 : 0;
-          const pb = pinnedPaths.has(b.path) ? 1 : 0;
+          const ia = pinnedOrder.indexOf(a.path);
+          const ib = pinnedOrder.indexOf(b.path);
+          const pa = ia !== -1 ? 1 : 0;
+          const pb = ib !== -1 ? 1 : 0;
           if (pa !== pb) return pb - pa;
+          if (pa === 1 && pb === 1) return ia - ib;
           return b.mtime - a.mtime;
         });
         setFiles(sorted);

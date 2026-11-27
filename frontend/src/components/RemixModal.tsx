@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { BookMarked, ImagePlus, Pin, Play, Save, Search, Shuffle, SlidersHorizontal, Wand2, Workflow, X } from "lucide-react";
+import { BookMarked, GripVertical, ImagePlus, Pin, Play, Save, Search, Shuffle, SlidersHorizontal, Wand2, Workflow, X } from "lucide-react";
 import { api } from "../api";
 import { useI18n } from "../i18n";
 import type { AssetDetail, ComfyStatus, PromptNodeEntry, SnippetItem } from "../types";
@@ -58,14 +58,35 @@ export const RemixModal: React.FC<Props> = ({ detail, comfyStatus, onClose, onSa
     }
   });
 
-  const pinnedNodeSet = useMemo(() => new Set(pinnedNodesMap[pinScopeKey] || []), [pinnedNodesMap, pinScopeKey]);
+  const pinnedNodeList = useMemo(() => pinnedNodesMap[pinScopeKey] || [], [pinnedNodesMap, pinScopeKey]);
+  const pinnedNodeSet = useMemo(() => new Set(pinnedNodeList), [pinnedNodeList]);
+  const [dragPinKey, setDragPinKey] = useState<string | null>(null);
+  const [dragOverPinKey, setDragOverPinKey] = useState<string | null>(null);
+
+  const reorderPinnedNodes = (fromKey: string, toKey: string) => {
+    if (!fromKey || !toKey || fromKey === toKey) return;
+    setPinnedNodesMap((prev) => {
+      const cur = [...(prev[pinScopeKey] || [])];
+      const fi = cur.indexOf(fromKey);
+      const ti = cur.indexOf(toKey);
+      if (fi === -1 || ti === -1) return prev;
+      const [moved] = cur.splice(fi, 1);
+      cur.splice(ti, 0, moved);
+      const next = { ...prev, [pinScopeKey]: cur };
+      try {
+        localStorage.setItem("comfyvault_pinned_remix_nodes_v1", JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  };
 
   const togglePinNode = (key: string) => {
     setPinnedNodesMap((prev) => {
-      const cur = new Set(prev[pinScopeKey] || []);
-      if (cur.has(key)) cur.delete(key);
-      else cur.add(key);
-      const next = { ...prev, [pinScopeKey]: Array.from(cur) };
+      const cur = [...(prev[pinScopeKey] || [])];
+      const idx = cur.indexOf(key);
+      if (idx !== -1) cur.splice(idx, 1);
+      else cur.push(key);
+      const next = { ...prev, [pinScopeKey]: cur };
       try {
         localStorage.setItem("comfyvault_pinned_remix_nodes_v1", JSON.stringify(next));
       } catch {
@@ -80,12 +101,15 @@ export const RemixModal: React.FC<Props> = ({ detail, comfyStatus, onClose, onSa
       detail.prompts
         .map((p) => ({ ...p }))
         .sort((a, b) => {
-          const pa = pinnedNodeSet.has(`prompt::${a.node_id}::${a.input_key}`) ? 1 : 0;
-          const pb = pinnedNodeSet.has(`prompt::${b.node_id}::${b.input_key}`) ? 1 : 0;
+          const ia = pinnedNodeList.indexOf(`prompt::${a.node_id}::${a.input_key}`);
+          const ib = pinnedNodeList.indexOf(`prompt::${b.node_id}::${b.input_key}`);
+          const pa = ia !== -1 ? 1 : 0;
+          const pb = ib !== -1 ? 1 : 0;
           if (pa !== pb) return pb - pa;
+          if (pa === 1 && pb === 1) return ia - ib;
           return compareNodeId(a.node_id, b.node_id);
         }),
-    [detail.prompts, pinnedNodeSet]
+    [detail.prompts, pinnedNodeList]
   );
 
   // Set of "node_id::input_key" already shown in the left prompt column so right column avoids duplicating them
@@ -211,12 +235,15 @@ export const RemixModal: React.FC<Props> = ({ detail, comfyStatus, onClose, onSa
         );
       })
       .sort((a, b) => {
-        const pa = pinnedNodeSet.has(a.nid) ? 1 : 0;
-        const pb = pinnedNodeSet.has(b.nid) ? 1 : 0;
+        const ia = pinnedNodeList.indexOf(a.nid);
+        const ib = pinnedNodeList.indexOf(b.nid);
+        const pa = ia !== -1 ? 1 : 0;
+        const pb = ib !== -1 ? 1 : 0;
         if (pa !== pb) return pb - pa;
+        if (pa === 1 && pb === 1) return ia - ib;
         return compareNodeId(a.nid, b.nid);
       });
-  }, [promptJson, uiTitles, promptFieldKeys, nodeFilter, pinnedNodeSet]);
+  }, [promptJson, uiTitles, promptFieldKeys, nodeFilter, pinnedNodeList]);
 
   const handleSave = async () => {
     if (!promptJson) return;
@@ -357,12 +384,53 @@ export const RemixModal: React.FC<Props> = ({ detail, comfyStatus, onClose, onSa
               return (
                 <div
                   key={`${p.node_id}-${p.input_key}-${idx}`}
-                  className={`rounded-xl border overflow-hidden ${
-                    isFocused ? "border-indigo-500/70" : isPinned ? "border-amber-500/50" : "border-zinc-800"
-                  }`}
+                  onDragOver={(e) => {
+                    if (!isPinned || !dragPinKey || dragPinKey === pinKey || !dragPinKey.startsWith("prompt::")) return;
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = "move";
+                    if (dragOverPinKey !== pinKey) setDragOverPinKey(pinKey);
+                  }}
+                  onDragLeave={() => {
+                    if (dragOverPinKey === pinKey) setDragOverPinKey(null);
+                  }}
+                  onDrop={(e) => {
+                    if (!isPinned || !dragPinKey || !dragPinKey.startsWith("prompt::")) return;
+                    e.preventDefault();
+                    reorderPinnedNodes(dragPinKey, pinKey);
+                    setDragPinKey(null);
+                    setDragOverPinKey(null);
+                  }}
+                  className={`rounded-xl border overflow-hidden transition-all ${
+                    isPinned && dragOverPinKey === pinKey && dragPinKey !== pinKey
+                      ? "border-amber-400 ring-2 ring-amber-400/60"
+                      : isFocused
+                      ? "border-indigo-500/70"
+                      : isPinned
+                      ? "border-amber-500/50"
+                      : "border-zinc-800"
+                  } ${dragPinKey === pinKey ? "opacity-55" : ""}`}
                 >
-                  <div className="px-3.5 py-2 bg-[#181d2b] flex items-center justify-between gap-2 text-xs">
+                  <div
+                    draggable={isPinned}
+                    onDragStart={(e) => {
+                      if (!isPinned) return;
+                      setDragPinKey(pinKey);
+                      e.dataTransfer.effectAllowed = "move";
+                      e.dataTransfer.setData("text/plain", pinKey);
+                    }}
+                    onDragEnd={() => {
+                      setDragPinKey(null);
+                      setDragOverPinKey(null);
+                    }}
+                    title={isPinned ? t("按住标题栏上下拖拽调整置顶顺序", "Drag header to reorder pinned prompts") : undefined}
+                    className={`px-3.5 py-2 bg-[#181d2b] flex items-center justify-between gap-2 text-xs ${
+                      isPinned ? "cursor-grab active:cursor-grabbing" : ""
+                    }`}
+                  >
                     <div className="flex items-center gap-2 min-w-0">
+                      {isPinned && (
+                        <GripVertical className="w-3.5 h-3.5 text-amber-400/75 shrink-0 -ml-1" />
+                      )}
                       <span className="px-1.5 py-0.5 rounded bg-indigo-600/30 border border-indigo-500/40 text-indigo-200 font-mono text-[11px] font-bold shrink-0">
                         #{p.node_id}
                       </span>
@@ -454,12 +522,51 @@ export const RemixModal: React.FC<Props> = ({ detail, comfyStatus, onClose, onSa
                   return (
                     <div
                       key={node.nid}
-                      className={`rounded-xl bg-[#141926] border overflow-hidden ${
-                        isPinned ? "border-amber-500/50" : "border-zinc-800/90"
-                      }`}
+                      onDragOver={(e) => {
+                        if (!isPinned || !dragPinKey || dragPinKey === node.nid || dragPinKey.startsWith("prompt::")) return;
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = "move";
+                        if (dragOverPinKey !== node.nid) setDragOverPinKey(node.nid);
+                      }}
+                      onDragLeave={() => {
+                        if (dragOverPinKey === node.nid) setDragOverPinKey(null);
+                      }}
+                      onDrop={(e) => {
+                        if (!isPinned || !dragPinKey || dragPinKey.startsWith("prompt::")) return;
+                        e.preventDefault();
+                        reorderPinnedNodes(dragPinKey, node.nid);
+                        setDragPinKey(null);
+                        setDragOverPinKey(null);
+                      }}
+                      className={`rounded-xl bg-[#141926] border overflow-hidden transition-all ${
+                        isPinned && dragOverPinKey === node.nid && dragPinKey !== node.nid
+                          ? "border-amber-400 ring-2 ring-amber-400/60"
+                          : isPinned
+                          ? "border-amber-500/50"
+                          : "border-zinc-800/90"
+                      } ${dragPinKey === node.nid ? "opacity-55" : ""}`}
                     >
-                      <div className="px-3 py-1.5 bg-[#1a2030] border-b border-zinc-800/80 flex items-center justify-between gap-2">
+                      <div
+                        draggable={isPinned}
+                        onDragStart={(e) => {
+                          if (!isPinned) return;
+                          setDragPinKey(node.nid);
+                          e.dataTransfer.effectAllowed = "move";
+                          e.dataTransfer.setData("text/plain", node.nid);
+                        }}
+                        onDragEnd={() => {
+                          setDragPinKey(null);
+                          setDragOverPinKey(null);
+                        }}
+                        title={isPinned ? t("按住标题栏上下拖拽调整置顶节点顺序", "Drag header to reorder pinned nodes") : undefined}
+                        className={`px-3 py-1.5 bg-[#1a2030] border-b border-zinc-800/80 flex items-center justify-between gap-2 ${
+                          isPinned ? "cursor-grab active:cursor-grabbing" : ""
+                        }`}
+                      >
                         <div className="flex items-center gap-1.5 min-w-0">
+                          {isPinned && (
+                            <GripVertical className="w-3.5 h-3.5 text-amber-400/75 shrink-0 -ml-1" />
+                          )}
                           <span className="px-1.5 py-0.5 rounded bg-purple-600/30 border border-purple-500/40 text-purple-200 font-mono text-[11px] font-bold shrink-0">
                             #{node.nid}
                           </span>

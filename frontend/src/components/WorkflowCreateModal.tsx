@@ -3,6 +3,7 @@ import {
   BookMarked,
   FileCode2,
   Folder,
+  GripVertical,
   ImagePlus,
   Pin,
   Play,
@@ -262,14 +263,19 @@ export const WorkflowCreateModal: React.FC<Props> = ({
     currentText: string;
   } | null>(null);
   const [iconModalTarget, setIconModalTarget] = useState<WorkflowFileItem | null>(null);
-  const [pinnedPaths, setPinnedPaths] = useState<Set<string>>(() => {
+  const [pinnedOrder, setPinnedOrder] = useState<string[]>(() => {
     try {
       const raw = localStorage.getItem("comfyvault_pinned_workflows");
-      return new Set(raw ? JSON.parse(raw) : []);
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed.map(String) : [];
     } catch {
-      return new Set();
+      return [];
     }
   });
+  const pinnedPaths = useMemo(() => new Set(pinnedOrder), [pinnedOrder]);
+  const [dragWfPath, setDragWfPath] = useState<string | null>(null);
+  const [dragOverWfPath, setDragOverWfPath] = useState<string | null>(null);
+
   const [pinnedNodesMap, setPinnedNodesMap] = useState<Record<string, string[]>>(() => {
     try {
       const raw = localStorage.getItem("comfyvault_pinned_wf_nodes_v1");
@@ -279,19 +285,57 @@ export const WorkflowCreateModal: React.FC<Props> = ({
       return {};
     }
   });
+  const [dragNodeId, setDragNodeId] = useState<string | null>(null);
+  const [dragOverNodeId, setDragOverNodeId] = useState<string | null>(null);
 
-  const pinnedNodeSet = useMemo(() => {
-    if (!selectedPath) return new Set<string>();
-    return new Set(pinnedNodesMap[selectedPath] || []);
+  const pinnedNodeList = useMemo(() => {
+    if (!selectedPath) return [] as string[];
+    return pinnedNodesMap[selectedPath] || [];
   }, [pinnedNodesMap, selectedPath]);
+
+  const pinnedNodeSet = useMemo(() => new Set(pinnedNodeList), [pinnedNodeList]);
+
+  const reorderPinnedWorkflows = (fromPath: string, toPath: string) => {
+    if (!fromPath || !toPath || fromPath === toPath) return;
+    setPinnedOrder((prev) => {
+      const next = [...prev];
+      const fi = next.indexOf(fromPath);
+      const ti = next.indexOf(toPath);
+      if (fi === -1 || ti === -1) return prev;
+      const [moved] = next.splice(fi, 1);
+      next.splice(ti, 0, moved);
+      try {
+        localStorage.setItem("comfyvault_pinned_workflows", JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  };
+
+  const reorderPinnedNodes = (fromNid: string, toNid: string) => {
+    if (!selectedPath || !fromNid || !toNid || fromNid === toNid) return;
+    setPinnedNodesMap((prev) => {
+      const cur = [...(prev[selectedPath] || [])];
+      const fi = cur.indexOf(fromNid);
+      const ti = cur.indexOf(toNid);
+      if (fi === -1 || ti === -1) return prev;
+      const [moved] = cur.splice(fi, 1);
+      cur.splice(ti, 0, moved);
+      const next = { ...prev, [selectedPath]: cur };
+      try {
+        localStorage.setItem("comfyvault_pinned_wf_nodes_v1", JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  };
 
   const togglePinNode = (nid: string) => {
     if (!selectedPath) return;
     setPinnedNodesMap((prev) => {
-      const cur = new Set(prev[selectedPath] || []);
-      if (cur.has(nid)) cur.delete(nid);
-      else cur.add(nid);
-      const next = { ...prev, [selectedPath]: Array.from(cur) };
+      const cur = [...(prev[selectedPath] || [])];
+      const idx = cur.indexOf(nid);
+      if (idx !== -1) cur.splice(idx, 1);
+      else cur.push(nid);
+      const next = { ...prev, [selectedPath]: cur };
       try {
         localStorage.setItem("comfyvault_pinned_wf_nodes_v1", JSON.stringify(next));
       } catch {
@@ -303,12 +347,13 @@ export const WorkflowCreateModal: React.FC<Props> = ({
 
   const togglePin = (e: React.MouseEvent, filePath: string) => {
     e.stopPropagation();
-    setPinnedPaths((prev) => {
-      const next = new Set(prev);
-      if (next.has(filePath)) next.delete(filePath);
-      else next.add(filePath);
+    setPinnedOrder((prev) => {
+      const next = [...prev];
+      const idx = next.indexOf(filePath);
+      if (idx !== -1) next.splice(idx, 1);
+      else next.push(filePath);
       try {
-        localStorage.setItem("comfyvault_pinned_workflows", JSON.stringify(Array.from(next)));
+        localStorage.setItem("comfyvault_pinned_workflows", JSON.stringify(next));
       } catch {}
       return next;
     });
@@ -502,12 +547,15 @@ export const WorkflowCreateModal: React.FC<Props> = ({
         );
       })
       .sort((a, b) => {
-        const pa = pinnedNodeSet.has(a.nid) ? 1 : 0;
-        const pb = pinnedNodeSet.has(b.nid) ? 1 : 0;
+        const ia = pinnedNodeList.indexOf(a.nid);
+        const ib = pinnedNodeList.indexOf(b.nid);
+        const pa = ia !== -1 ? 1 : 0;
+        const pb = ib !== -1 ? 1 : 0;
         if (pa !== pb) return pb - pa;
+        if (pa === 1 && pb === 1) return ia - ib;
         return compareNodeId(a.nid, b.nid);
       });
-  }, [promptJson, uiTitles, nodeFilter, pinnedNodeSet]);
+  }, [promptJson, uiTitles, nodeFilter, pinnedNodeList]);
 
   const filteredFiles = useMemo(() => {
     const q = fileSearch.trim().toLowerCase();
@@ -515,12 +563,15 @@ export const WorkflowCreateModal: React.FC<Props> = ({
       ? files.filter((f) => f.name.toLowerCase().includes(q) || f.folder.toLowerCase().includes(q))
       : files;
     return [...matched].sort((a, b) => {
-      const pa = pinnedPaths.has(a.path) ? 1 : 0;
-      const pb = pinnedPaths.has(b.path) ? 1 : 0;
+      const ia = pinnedOrder.indexOf(a.path);
+      const ib = pinnedOrder.indexOf(b.path);
+      const pa = ia !== -1 ? 1 : 0;
+      const pb = ib !== -1 ? 1 : 0;
       if (pa !== pb) return pb - pa;
+      if (pa === 1 && pb === 1) return ia - ib;
       return b.mtime - a.mtime;
     });
-  }, [files, fileSearch, pinnedPaths]);
+  }, [files, fileSearch, pinnedOrder]);
 
   const handleSaveToWorkflow = async () => {
     if (!selectedPath || !promptJson) return;
@@ -654,11 +705,39 @@ export const WorkflowCreateModal: React.FC<Props> = ({
                 filteredFiles.map((f) => {
                   const active = selectedPath === f.path;
                   const pinned = pinnedPaths.has(f.path);
+                  const isDragOver = pinned && dragOverWfPath === f.path && dragWfPath !== f.path;
                   return (
                     <div
                       key={f.path}
                       role="button"
                       tabIndex={0}
+                      draggable={pinned}
+                      onDragStart={(e) => {
+                        if (!pinned) return;
+                        setDragWfPath(f.path);
+                        e.dataTransfer.effectAllowed = "move";
+                        e.dataTransfer.setData("text/plain", f.path);
+                      }}
+                      onDragOver={(e) => {
+                        if (!pinned || !dragWfPath || dragWfPath === f.path) return;
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = "move";
+                        if (dragOverWfPath !== f.path) setDragOverWfPath(f.path);
+                      }}
+                      onDragLeave={() => {
+                        if (dragOverWfPath === f.path) setDragOverWfPath(null);
+                      }}
+                      onDrop={(e) => {
+                        if (!pinned || !dragWfPath) return;
+                        e.preventDefault();
+                        reorderPinnedWorkflows(dragWfPath, f.path);
+                        setDragWfPath(null);
+                        setDragOverWfPath(null);
+                      }}
+                      onDragEnd={() => {
+                        setDragWfPath(null);
+                        setDragOverWfPath(null);
+                      }}
                       onClick={() => selectFile(f.path)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" || e.key === " ") {
@@ -666,15 +745,25 @@ export const WorkflowCreateModal: React.FC<Props> = ({
                           selectFile(f.path);
                         }
                       }}
-                      className={`group w-full text-left p-2.5 rounded-xl border transition-colors cursor-pointer ${
-                        active
+                      className={`group w-full text-left p-2.5 rounded-xl border transition-all cursor-pointer ${
+                        isDragOver
+                          ? "border-amber-400 ring-2 ring-amber-400/60 bg-amber-500/15"
+                          : active
                           ? "bg-indigo-600/20 border-indigo-500/60"
                           : pinned
                           ? "bg-[#151a28] border-amber-500/35 hover:border-amber-400/60"
                           : "bg-[#131722] border-zinc-800/70 hover:border-zinc-700"
-                      }`}
+                      } ${dragWfPath === f.path ? "opacity-50" : ""}`}
                     >
-                      <div className="flex items-start gap-2.5">
+                      <div className="flex items-start gap-2">
+                        {pinned && (
+                          <span
+                            title={t("按住上下拖拽调整置顶顺序", "Drag to reorder pinned workflows")}
+                            className="mt-2.5 -ml-1 text-amber-400/60 group-hover:text-amber-300 cursor-grab active:cursor-grabbing shrink-0"
+                          >
+                            <GripVertical className="w-3.5 h-3.5" />
+                          </span>
+                        )}
                         <button
                           type="button"
                           onClick={(e) => {
@@ -810,15 +899,55 @@ export const WorkflowCreateModal: React.FC<Props> = ({
                   const isLoadImage = node.class_type.toLowerCase().includes("loadimage");
                   const nodeOpts = fieldOptions[node.nid] || {};
                   const isPinned = pinnedNodeSet.has(node.nid);
+                  const isNodeDragOver = isPinned && dragOverNodeId === node.nid && dragNodeId !== node.nid;
                   return (
                     <div
                       key={node.nid}
-                      className={`rounded-xl bg-[#141926] border overflow-hidden ${
-                        isPinned ? "border-amber-500/50" : "border-zinc-800/90"
-                      }`}
+                      onDragOver={(e) => {
+                        if (!isPinned || !dragNodeId || dragNodeId === node.nid) return;
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = "move";
+                        if (dragOverNodeId !== node.nid) setDragOverNodeId(node.nid);
+                      }}
+                      onDragLeave={() => {
+                        if (dragOverNodeId === node.nid) setDragOverNodeId(null);
+                      }}
+                      onDrop={(e) => {
+                        if (!isPinned || !dragNodeId) return;
+                        e.preventDefault();
+                        reorderPinnedNodes(dragNodeId, node.nid);
+                        setDragNodeId(null);
+                        setDragOverNodeId(null);
+                      }}
+                      className={`rounded-xl bg-[#141926] border overflow-hidden transition-all ${
+                        isNodeDragOver
+                          ? "border-amber-400 ring-2 ring-amber-400/60"
+                          : isPinned
+                          ? "border-amber-500/50"
+                          : "border-zinc-800/90"
+                      } ${dragNodeId === node.nid ? "opacity-55" : ""}`}
                     >
-                      <div className="px-4 py-2 bg-[#1a2030] border-b border-zinc-800/80 flex items-center justify-between gap-2">
+                      <div
+                        draggable={isPinned}
+                        onDragStart={(e) => {
+                          if (!isPinned) return;
+                          setDragNodeId(node.nid);
+                          e.dataTransfer.effectAllowed = "move";
+                          e.dataTransfer.setData("text/plain", node.nid);
+                        }}
+                        onDragEnd={() => {
+                          setDragNodeId(null);
+                          setDragOverNodeId(null);
+                        }}
+                        title={isPinned ? t("按住标题栏上下拖拽调整置顶节点顺序", "Drag header to reorder pinned nodes") : undefined}
+                        className={`px-4 py-2 bg-[#1a2030] border-b border-zinc-800/80 flex items-center justify-between gap-2 ${
+                          isPinned ? "cursor-grab active:cursor-grabbing" : ""
+                        }`}
+                      >
                         <div className="flex items-center gap-2 min-w-0">
+                          {isPinned && (
+                            <GripVertical className="w-3.5 h-3.5 text-amber-400/75 shrink-0 -ml-1" />
+                          )}
                           <span className="px-2 py-0.5 rounded-md bg-indigo-600/30 border border-indigo-500/40 text-indigo-200 font-mono text-xs font-bold shrink-0">
                             #{node.nid}
                           </span>
