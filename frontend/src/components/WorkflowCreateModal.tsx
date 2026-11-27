@@ -19,6 +19,7 @@ import { api, formatTime } from "../api";
 import { useI18n } from "../i18n";
 import type { ComfyStatus, SnippetItem, WorkflowFileItem } from "../types";
 import { InlinePromptWriterModal } from "./InlinePromptWriterModal";
+import { PersistentTextarea } from "./PersistentTextarea";
 import { PowerLoraEditor } from "./PowerLoraEditor";
 import type { WorkflowPrefillPayload } from "./PromptConverterModal";
 
@@ -969,7 +970,8 @@ export const WorkflowCreateModal: React.FC<Props> = ({
                                     {t("AI 写提示词", "AI Write")}
                                   </button>
                                 </div>
-                                <textarea
+                                <PersistentTextarea
+                                  storageId={`wf::${selectedPath || activeName || "default"}::${node.nid}::${key}`}
                                   value={strVal}
                                   onFocus={() => setFocusedField({ nid: node.nid, key })}
                                   onChange={(e) => updateInput(node.nid, key, e.target.value)}

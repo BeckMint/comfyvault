@@ -4,6 +4,7 @@ import { api } from "../api";
 import { useI18n } from "../i18n";
 import type { AssetDetail, ComfyStatus, PromptNodeEntry, SnippetItem } from "../types";
 import { InlinePromptWriterModal } from "./InlinePromptWriterModal";
+import { PersistentTextarea } from "./PersistentTextarea";
 import { PowerLoraEditor } from "./PowerLoraEditor";
 
 interface Props {
@@ -409,7 +410,8 @@ export const RemixModal: React.FC<Props> = ({ detail, comfyStatus, onClose, onSa
                       </button>
                     </div>
                   </div>
-                  <textarea
+                  <PersistentTextarea
+                    storageId={`remix::${detail.workflow_hash || detail.workflow_name || detail.id}::${p.node_id}::${p.input_key}`}
                     value={curText}
                     onFocus={() => setActivePromptKey({ nid: p.node_id, key: p.input_key })}
                     onChange={(e) => updateInput(p.node_id, p.input_key, e.target.value)}
