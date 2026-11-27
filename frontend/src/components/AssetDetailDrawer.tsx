@@ -604,13 +604,34 @@ export const AssetDetailDrawer: React.FC<Props> = ({
                 ["Scheduler", detail.params.scheduler ?? "-"],
                 [t("文件体积", "File Size"), formatBytes(detail.file_size)],
                 [
-                  t("耗时 / 时长", "Duration"),
+                  t("生成耗时", "Gen Time"),
                   detail.gen_duration_sec
-                    ? t(`生成 ${detail.gen_duration_sec}s`, `Gen ${detail.gen_duration_sec}s`)
-                    : detail.duration
-                    ? t(`视频 ${detail.duration}s (${detail.fps || "-"}fps)`, `Video ${detail.duration}s (${detail.fps || "-"}fps)`)
+                    ? (() => {
+                        const s = detail.gen_duration_sec;
+                        if (s >= 3600) {
+                          const h = Math.floor(s / 3600);
+                          const m = Math.floor((s % 3600) / 60);
+                          return t(`${h}小时${m}分`, `${h}h ${m}m`);
+                        }
+                        if (s >= 60) {
+                          const m = Math.floor(s / 60);
+                          const r = Math.round(s % 60);
+                          return t(`${m}分${r}秒`, `${m}m ${r}s`);
+                        }
+                        return `${s.toFixed(1)}s`;
+                      })()
                     : "-",
                 ],
+                ...(detail.media_type === "video" || detail.duration
+                  ? [
+                      [
+                        t("视频时长", "Video Length"),
+                        detail.duration
+                          ? `${detail.duration}s (${detail.fps || "-"}fps)`
+                          : "-",
+                      ],
+                    ]
+                  : []),
               ].map(([k, v]) => (
                 <div key={String(k)} className="px-2.5 py-1.5 rounded-lg bg-[#151925] border border-zinc-800/80">
                   <div className="text-[10px] text-zinc-500">{k}</div>

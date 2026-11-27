@@ -335,6 +335,7 @@ class ComfyBridge:
                         self.state["online"] = True
                         await self._refresh_system_stats(session)
                         self._emit("comfy_status", dict(self.state))
+                        asyncio.create_task(self._backfill_history_durations())
 
                         async for msg in ws:
                             if msg.type == aiohttp.WSMsgType.TEXT:
@@ -483,6 +484,72 @@ class ComfyBridge:
             self._reset_exec_trackers()
             self._emit("comfy_status", dict(self.state))
 
+    @staticmethod
+    def _extract_history_duration(entry: Dict[str, Any]) -> Optional[float]:
+        status = entry.get("status")
+        if not isinstance(status, dict):
+            return None
+        messages = status.get("messages") or []
+        t_start = None
+        t_end = None
+        for msg in messages:
+            if not isinstance(msg, (list, tuple)) or len(msg) < 2:
+                continue
+            mtype, mdata = msg[0], msg[1]
+            if not isinstance(mdata, dict):
+                continue
+            ts = mdata.get("timestamp")
+            if ts is None:
+                continue
+            try:
+                ts_f = float(ts)
+            except Exception:
+                continue
+            if mtype == "execution_start" and t_start is None:
+                t_start = ts_f
+            elif mtype in ("execution_success", "execution_interrupted"):
+                t_end = ts_f
+        if t_start is not None and t_end is not None and t_end >= t_start:
+            dur = (t_end - t_start) / 1000.0
+            if 0.05 <= dur <= 86400.0:
+                return round(dur, 2)
+        return None
+
+    async def _backfill_history_durations(self) -> None:
+        """Backfill gen_duration_sec for recent ComfyUI /history outputs missing generation duration."""
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"{COMFY_HTTP_URL}/history?max_items=60", timeout=aiohttp.ClientTimeout(total=8)
+                ) as resp:
+                    if resp.status != 200:
+                        return
+                    hist = await resp.json()
+        except Exception:
+            return
+        if not isinstance(hist, dict):
+            return
+        for _pid, entry in hist.items():
+            if not isinstance(entry, dict):
+                continue
+            dur = self._extract_history_duration(entry)
+            if dur is None:
+                continue
+            outputs = entry.get("outputs") or {}
+            for _nid, node_out in outputs.items():
+                if not isinstance(node_out, dict):
+                    continue
+                for key in ("images", "gifs", "videos"):
+                    for item in node_out.get(key) or []:
+                        if not isinstance(item, dict) or item.get("type") not in (None, "output"):
+                            continue
+                        fn = item.get("filename")
+                        sub = (item.get("subfolder") or "").replace("\\", "/").strip("/")
+                        if not fn:
+                            continue
+                        rel = f"{sub}/{fn}" if sub else fn
+                        await asyncio.to_thread(self.db.update_gen_duration_by_rel_path, rel, dur)
+
     async def _capture_history(self, prompt_id: str) -> None:
         # Brief delay to ensure ComfyUI finished flushing files & history
         await asyncio.sleep(0.4)
@@ -507,7 +574,9 @@ class ComfyBridge:
         workflow_json = (extra_data.get("extra_pnginfo") or {}).get("workflow")
 
         started = self._start_times.pop(prompt_id, None)
-        gen_duration = round(time.time() - started, 2) if started else None
+        gen_duration = self._extract_history_duration(entry)
+        if gen_duration is None and started:
+            gen_duration = round(time.time() - started, 2)
         parent_id = self._lineage_map.pop(prompt_id, None)
         ref_image = self._ref_image_map.pop(prompt_id, None)
 

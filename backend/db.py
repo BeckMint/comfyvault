@@ -354,7 +354,8 @@ class VaultDB:
                             rel_path=?, folder=?, filename=?, media_type=?, ext=?,
                             file_size=?, mtime_ns=?, created_at=?, width=?, height=?,
                             duration=?, fps=?, thumb_name=COALESCE(?, thumb_name),
-                            comfy_version=?, gen_duration_sec=?,
+                            comfy_version=COALESCE(?, comfy_version),
+                            gen_duration_sec=COALESCE(?, gen_duration_sec),
                             parent_id=COALESCE(?, parent_id),
                             reference_image=COALESCE(?, reference_image),
                             is_deleted=0
@@ -432,7 +433,8 @@ class VaultDB:
                             rel_path=?, folder=?, filename=?, media_type=?, ext=?,
                             file_size=?, mtime_ns=?, created_at=?, width=?, height=?,
                             duration=?, fps=?, thumb_name=COALESCE(?, thumb_name),
-                            comfy_version=?, gen_duration_sec=?,
+                            comfy_version=COALESCE(?, comfy_version),
+                            gen_duration_sec=COALESCE(?, gen_duration_sec),
                             workflow_hash=?, workflow_name=?, recipe_hash=?, base_model=?, model_family=?,
                             primary_prompt=?, all_prompts_text=?, prompts_json=?, models_json=?,
                             loras_json=?, params_json=?, seed_targets_json=?, param_targets_json=?,
@@ -583,6 +585,19 @@ class VaultDB:
                 )
             conn.commit()
             return True
+
+    def update_gen_duration_by_rel_path(self, rel_path: str, gen_duration_sec: float) -> bool:
+        norm = (rel_path or "").replace("\\", "/").lstrip("/")
+        if not norm or gen_duration_sec <= 0:
+            return False
+        with self._write_lock:
+            conn = self._conn()
+            cur = conn.execute(
+                "UPDATE assets SET gen_duration_sec = ? WHERE rel_path = ? AND (gen_duration_sec IS NULL OR gen_duration_sec <= 0)",
+                (round(float(gen_duration_sec), 2), norm),
+            )
+            conn.commit()
+            return cur.rowcount > 0
 
     def get_assets_missing_thumbs(self) -> List[Dict[str, Any]]:
         rows = self._conn().execute(
