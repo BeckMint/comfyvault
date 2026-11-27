@@ -16,7 +16,14 @@ export const LiveProgressBar: React.FC<Props> = ({ status, onInterrupt }) => {
 
   const [elapsed, setElapsed] = useState(0);
   const [stopping, setStopping] = useState(false);
+  const [confirmStop, setConfirmStop] = useState(false);
   const [dismissedKey, setDismissedKey] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!confirmStop) return;
+    const tid = window.setTimeout(() => setConfirmStop(false), 3200);
+    return () => window.clearTimeout(tid);
+  }, [confirmStop]);
 
   useEffect(() => {
     if (!isBusy || !status.started_at) {
@@ -30,10 +37,11 @@ export const LiveProgressBar: React.FC<Props> = ({ status, onInterrupt }) => {
   }, [isBusy, status.started_at]);
 
   useEffect(() => {
-    // Reset dismissed state when a new prompt starts or execution stops
+    // Reset dismissed & confirm state when a new prompt starts or execution stops
     if (!isBusy) {
       setDismissedKey(null);
       setStopping(false);
+      setConfirmStop(false);
     }
   }, [isBusy, status.executing_prompt_id]);
 
@@ -121,13 +129,44 @@ export const LiveProgressBar: React.FC<Props> = ({ status, onInterrupt }) => {
       )}
 
       {/* Main Progress Bar Row */}
-      <div className="bg-[#121728] border-b border-indigo-500/40 px-4 py-2 flex items-center gap-4">
+      <div className="bg-[#121728] border-b border-indigo-500/40 px-4 py-2 flex items-center gap-3.5">
         <div className="flex items-center gap-2 shrink-0">
           <Loader2 className="w-4 h-4 text-indigo-400 animate-spin" />
           <span className="text-xs font-semibold text-indigo-200">{t("ComfyUI 正在生成", "ComfyUI Generating")}</span>
         </div>
 
-        <div className="text-xs text-zinc-200 truncate max-w-[260px]" title={status.executing_node_title || ""}>
+        {/* Left-placed Stop button with 3s two-step confirmation (far away from top-right Create button) */}
+        <button
+          type="button"
+          disabled={stopping}
+          onClick={() => {
+            if (!confirmStop) {
+              setConfirmStop(true);
+              return;
+            }
+            setConfirmStop(false);
+            handleStop();
+          }}
+          title={
+            confirmStop
+              ? t("再次点击确认中断当前生成任务（3秒后自动取消）", "Click again to confirm stopping current task")
+              : t("中断当前 ComfyUI 生成任务（需二次点击防误触）", "Stop current ComfyUI task (click twice to confirm)")
+          }
+          className={`px-2.5 py-1 rounded-md text-[11px] font-medium flex items-center gap-1 shrink-0 transition-all disabled:opacity-50 ${
+            confirmStop
+              ? "bg-rose-600 hover:bg-rose-500 border border-rose-400 text-white shadow-sm animate-pulse"
+              : "bg-rose-600/20 hover:bg-rose-600/35 border border-rose-500/40 text-rose-200"
+          }`}
+        >
+          <Square className="w-3 h-3 fill-current" />
+          {stopping
+            ? t("中断中...", "Stopping...")
+            : confirmStop
+            ? t("确认中断?", "Confirm Stop?")
+            : t("中断", "Stop")}
+        </button>
+
+        <div className="text-xs text-zinc-200 truncate max-w-[240px]" title={status.executing_node_title || ""}>
           {status.executing_node_title ||
             (status.executing_node ? `${t("节点", "Node")} #${status.executing_node}` : t("排队等待执行...", "Queued..."))}
         </div>
@@ -144,6 +183,7 @@ export const LiveProgressBar: React.FC<Props> = ({ status, onInterrupt }) => {
           )}
         </div>
 
+        {/* Right side: read-only telemetry only (safe underneath top-right Create button) */}
         <div className="flex items-center gap-2.5 text-[11px] font-mono text-zinc-300 shrink-0">
           {hasSteps ? (
             <span className="text-indigo-300 font-semibold">
@@ -204,17 +244,6 @@ export const LiveProgressBar: React.FC<Props> = ({ status, onInterrupt }) => {
             </span>
           )}
         </div>
-
-        <button
-          type="button"
-          disabled={stopping}
-          onClick={handleStop}
-          title={t("立即中断 ComfyUI 当前生成任务", "Interrupt current ComfyUI execution")}
-          className="px-2.5 py-1 rounded-md bg-rose-600/25 hover:bg-rose-600/50 border border-rose-500/40 text-rose-200 text-[11px] font-medium flex items-center gap-1 shrink-0 transition-colors disabled:opacity-50"
-        >
-          <Square className="w-3 h-3 fill-current" />
-          {t("中断", "Stop")}
-        </button>
       </div>
     </div>
   );
