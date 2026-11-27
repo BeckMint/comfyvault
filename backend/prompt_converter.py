@@ -158,18 +158,17 @@ def build_conversion_instruction(
         )
         extra = f"\nUser adjustments to apply: {src}" if src else ""
         return (
-            f"Write a cohesive 2-3 paragraph ({out_lang}, ~180-260 words) image generation prompt for {model_family or 'Krea 2'} "
+            f"Write a cohesive 2-3 paragraph ({out_lang}, ~180-250 words) image generation prompt for {model_family or 'Krea 2'} "
             "reverse-engineered from the attached photo.\n"
             f"{excl}\n"
-            "OPENING SENTENCES MUST EXACTLY LOCK SUBJECT-TO-FRAME SCALE & CAMERA GEOMETRY (no contradictory crop terms):\n"
-            "- Exact subject scale in frame: estimate what % of frame height the subject occupies (e.g. ~45% distant, ~65% medium, ~85% tight) and exact top/bottom/side empty margin.\n"
-            "- Consistent shot scale & crop boundary (if feet are visible, state full-body with ground margin below feet; never mix 'wide' with 'cropped tightly').\n"
-            "- Camera height & vertical pitch relative to subject (worm's-eye/low-angle/eye-level/high-angle/top-down).\n"
-            "- Camera horizontal azimuth (frontal/3-4/profile/over-shoulder/rear) vs torso direction, head turn & exact eye gaze.\n"
-            "- Subject placement in frame (left third / centered / right third), lens focal length & perspective/foreshortening, depth of field.\n"
+            "VERY FIRST SENTENCE MUST LEAD DIRECTLY WITH STRONG CAMERA ANGLE, PITCH & CROP (never bury camera angle later, never hedge with weak 'around 10-15 degrees'):\n"
+            "- Lead immediately with unmistakable camera angle + crop (e.g. 'High-angle downward upper-thigh-up shot looking down from above her head...', 'Low-angle upward full-body shot from knee height...', 'Over-the-shoulder rear three-quarter medium shot...').\n"
+            "- PROVE the camera angle with concrete visual foreshortening cues so the diffusion model actually renders it: for high-angle, state looking down onto the crown of her head, tops of shoulders, and downward past her torso/floor/furniture; for low-angle, state looking up toward the underside of her chin with looming lower body and ceiling/sky behind.\n"
+            "- Exact subject scale (% of frame height, e.g. ~45% distant, ~65% medium, ~80% tight) and consistent crop boundaries (never mix 'wide' with 'cropped tightly').\n"
+            "- Exact horizontal azimuth (frontal/3-4/profile/over-shoulder/rear) vs torso direction, head turn & eye gaze, plus foreground shoot-through occlusion if any.\n"
             "THEN DESCRIBE ACCURATELY: exact hairstyle & bangs, exact clothing style/collar/footwear (never vague 'top'), "
             "what each hand is doing or holding, pose/body action, expression/mood, "
-            "background environment/props/foreground occlusion, lighting direction/contrast, color grading, film/photo style & story.\n"
+            "background environment/props, lighting direction/contrast, color grading, film/photo style & story.\n"
             f"Refer to the subject neutrally ('the woman'/'she'). Output ONLY the prompt wrapped between {start_marker} and {end_marker}."
             f"{extra}"
         )
@@ -214,15 +213,17 @@ def build_conversion_instruction(
 
     if has_image:
         camera_lock_block = (
-            "UNIFIED IMAGE REVERSE-PROMPTING FIDELITY RULES (APPLIES TO ALL ENGINES — HIGHEST PRIORITY, STATE IN OPENING PARAGRAPH):\n"
-            "Do NOT default to generic 'eye-level 50mm' descriptions. Faithfully reverse-engineer every photographic and compositional element from the reference image:\n"
-            "1. Subject-to-Frame Scale & Consistent Crop Boundaries (NO aspect ratio/orientation words): explicitly estimate what percentage of the frame height the subject occupies (e.g., small ~40-50% figure in a wide scene, medium ~60-70% with generous top/bottom margins, large ~80-90% filling the frame), state exact crop boundaries consistently (if feet are visible, state full-body with visible ground margin below feet; NEVER contradict 'wide' with 'cropped tightly'), and describe exact headroom and side breathing room — NEVER mention aspect ratio, vertical/horizontal framing, or resolution (handled by workflow node).\n"
-            "2. Camera Elevation & Vertical Pitch Relative to Subject: specify exact camera height and tilt (ground-level worm's-eye looking sharply up, low-angle from knee/waist level looking up, strict eye-level, slightly elevated high-angle looking down, steep overhead/top-down bird's-eye).\n"
-            "3. Horizontal Viewing Angle & Subject Orientation: explicitly separate (a) camera azimuth relative to the subject (dead-on frontal, 3/4 front-left or front-right, strict side profile, over-the-shoulder, 3/4 rear view looking back, full back view), (b) torso orientation, (c) head turn angle, and (d) exact eye-gaze direction & facial expression.\n"
-            "4. Subject Placement, Scale & Horizon: state where the subject sits in the frame (centered, left/right third, lower-left/upper-right, diagonal axis), approximate frame occupancy, horizon line height (low/mid/high), and any Dutch tilt / camera roll.\n"
-            "5. Photography Style, Focal Length & Post-Processing: specify the photographic aesthetic (candid documentary, editorial fashion, vintage film, cinematic still, studio commercial, amateur snapshot), estimated lens focal length & perspective/foreshortening (wide 20-28mm vs natural 35-50mm vs telephoto 85-135mm), depth of field, lighting setup, color grading, film grain, contrast curve, and stylistic treatment.\n"
-            "6. Background, Depth Layering & Storytelling: describe immediate foreground occlusion/shoot-through elements, leading lines, background scene & props, and the overall narrative story & mood.\n"
-            "7. LoRA Character Preservation: NEVER describe the reference person's fixed facial bone structure/features or body proportions/bust/waist/hips, so the target LoRA character's own face and body proportions remain 100% intact.\n"
+            "UNIFIED IMAGE REVERSE-PROMPTING FIDELITY RULES (APPLIES TO ALL ENGINES — HIGHEST PRIORITY):\n"
+            "Keep the prompt concise and high-impact (2-3 cohesive paragraphs, ~200-280 words — NEVER write bloated 400+ word essays that dilute early camera-angle tokens). Do NOT default to generic 'eye-level 50mm' descriptions:\n"
+            "1. FIRST-SENTENCE CAMERA ANGLE & PITCH LOCK (CRITICAL FOR DIFFUSION MODELS): The VERY FIRST 10-15 WORDS MUST lead directly with the unmistakable camera elevation, vertical pitch, horizontal viewing angle, and shot crop (e.g., 'High-angle downward upper-thigh-up shot looking down from above her head...', 'Steep low-angle upward full-body shot from knee level...', 'Over-the-shoulder three-quarter rear shot...'). NEVER bury the camera angle in sentence 3, and NEVER use weak hedged phrasing like 'at shoulder level, angled around 10-15 degrees' (diffusion models ignore hedged degrees and collapse to flat eye-level!).\n"
+            "2. VISUAL PERSPECTIVE PROOF (MANDATORY): Reinforce the camera angle with concrete anatomical and spatial foreshortening cues that force the model to render the exact perspective:\n"
+            "   - If HIGH-ANGLE / DOWNWARD: explicitly describe the camera positioned ABOVE her head looking down onto the crown of her head, the tops of her shoulders, and downward past her collarbone/torso toward the lower body/floor/furniture below, with upper body appearing closer/larger and lower body tapering away downward.\n"
+            "   - If LOW-ANGLE / UPWARD: explicitly describe the camera positioned BELOW her waist/knees looking sharply upward, showing the underside of her chin/jawline, looming foreground legs/lower torso, and ceiling/sky rising behind.\n"
+            "   - If SIDE / 3/4 / REAR / OVER-THE-SHOULDER: explicitly state which side or back of the body faces the lens closest, torso direction, head turn angle, and exact eye-gaze direction.\n"
+            "3. Subject-to-Frame Scale & Consistent Crop Boundaries (NO aspect ratio/orientation words): explicitly state what percentage of frame height the subject occupies (e.g., ~45% distant, ~65% medium, ~80% tight) and exact crop boundaries consistently (if feet are visible, state full-body with visible ground margin below feet; NEVER contradict 'wide' with 'cropped tightly') — NEVER mention aspect ratio, vertical/horizontal framing, or resolution (handled by workflow node).\n"
+            "4. Foreground Occlusion, Depth Layering & Lens Perspective: describe any close-to-lens foreground shoot-through elements (e.g., heavy defocused lace/curtains/foliage/doorframe covering the top/sides of the frame), estimated focal length & working distance, depth of field, and horizon height or Dutch tilt.\n"
+            "5. Action, Pose, Hair, Wardrobe & Lighting: accurately describe what each hand is doing or holding, posture/expression, exact hairstyle & bangs, exact clothing style/cut/material/footwear, lighting direction, cast shadows, color grading, film texture & mood.\n"
+            "6. LoRA Character Preservation: NEVER describe the reference person's fixed facial bone structure/features or body proportions/bust/waist/hips, and NEVER mention watermarks, date stamps, logos, or @handles.\n"
         )
         task_block = (
             f"{camera_lock_block}\n"
